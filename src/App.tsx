@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 // --- Firebase Imports ---
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { doc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
@@ -513,17 +513,48 @@ export default function App() {
   }, [isDarkMode]);
 
   useEffect(() => {
-    signInAnonymously(auth).catch((error) => {
-      console.error("Anonymous auth failed:", error);
-      setAuthError(error.message);
-    });
-
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!loadingAuth && !user) {
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        setAuthError("VITE_GOOGLE_CLIENT_ID is missing in environment variables.");
+        return;
+      }
+
+      const handleCredentialResponse = async (response: any) => {
+        try {
+          const credential = GoogleAuthProvider.credential(response.credential);
+          await signInWithCredential(auth, credential);
+        } catch (error: any) {
+          console.error("GSI Login failed", error);
+          setAuthError(error.message);
+        }
+      };
+
+      // @ts-ignore
+      if (window.google) {
+        // @ts-ignore
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleCredentialResponse,
+          context: 'signin',
+          ux_mode: 'popup',
+        });
+        // @ts-ignore
+        window.google.accounts.id.renderButton(
+          document.getElementById("gsi-button-container"),
+          { theme: isDarkMode ? "filled_black" : "outline", size: "large", shape: "pill" }
+        );
+      }
+    }
+  }, [loadingAuth, user, isDarkMode]);
 
   useEffect(() => {
     if (!user) return;
@@ -653,19 +684,33 @@ export default function App() {
           <AnimatedLogo />
           <h2 className="text-xl font-bold mt-6 mb-2 text-rose-500">Authentication Error</h2>
           <p className="text-zinc-600 dark:text-zinc-400 text-sm">{authError}</p>
-          <p className="text-zinc-500 text-xs mt-4">Please enable Anonymous Authentication in your Firebase Console.</p>
+          <p className="text-zinc-500 text-xs mt-4">Please check your Google Client ID and Firebase configuration.</p>
         </div>
       </div>
     );
   }
 
-  if (loadingAuth || !user) {
+  if (loadingAuth) {
     return (
       <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center">
         <InteractiveBackground isDarkMode={isDarkMode} />
         <div className="relative z-10 flex flex-col items-center">
           <AnimatedLogo />
           <div className="mt-8 text-sm font-bold text-zinc-500 animate-pulse">Authenticating...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center overflow-hidden">
+        <InteractiveBackground isDarkMode={isDarkMode} />
+        <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center shadow-2xl">
+          <AnimatedLogo />
+          <h2 className="text-xl font-bold mt-6 mb-2 tracking-tight">Portfolio Tracker Pro</h2>
+          <p className="text-zinc-500 text-sm mb-8 text-center">Sign in to access your dashboard.</p>
+          <div id="gsi-button-container" className="w-full flex justify-center min-h-[44px]"></div>
         </div>
       </div>
     );
