@@ -1,0 +1,66 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: artifacts/{appId}/users/{userId}/transactions
+    // Document ID: auto-generated or UUID
+    // Fields:
+    //   - id: string
+    //   - date: string
+    //   - deposit: number (optional)
+    //   - withdrawal: number (optional)
+    //
+    // Collection: artifacts/{appId}/users/{userId}/history
+    // Document ID: auto-generated or UUID
+    // Fields:
+    //   - id: string
+    //   - date: string
+    //   - marketValue: number
+    //
+    // Collection: artifacts/{appId}/users/{userId}/benchmark
+    // Document ID: auto-generated or UUID
+    // Fields:
+    //   - id: string
+    //   - date: string
+    //   - price: number
+    //
+    // Collection: artifacts/{appId}/users/{userId}/prompts
+    // Document ID: auto-generated or UUID
+    // Fields:
+    //   - id: string
+    //   - title: string
+    //   - content: string
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /artifacts/{appId}/users/{userId} {
+      match /transactions/{transactionId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /history/{historyId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /benchmark/{benchmarkId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /prompts/{promptId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}
