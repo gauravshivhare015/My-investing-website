@@ -16,6 +16,57 @@ import { onAuthStateChanged, GoogleAuthProvider, signInWithCredential } from 'fi
 import { doc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 // --- AI Imports ---
 import { GoogleGenAI } from '@google/genai';
 import Markdown from 'react-markdown';
@@ -745,37 +796,45 @@ export default function App() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const sorted = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setTransactions([...sorted, { id: crypto.randomUUID(), date: '', deposit: '', withdrawal: '' }]);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, txnsPath.path));
     const unsubHist = onSnapshot(histPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const sorted = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setPortfolioHistory([...sorted, { id: crypto.randomUUID(), date: '', marketValue: '' }]);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, histPath.path));
     const unsubBench = onSnapshot(benchPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const sorted = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setBenchmarkHistory([...sorted, { id: crypto.randomUUID(), date: '', price: '' }]);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, benchPath.path));
     const unsubPrompts = onSnapshot(promptsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPrompts([...data, { id: crypto.randomUUID(), title: '', content: '' }]);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, promptsPath.path));
     const unsubFiles = onSnapshot(filesPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setFiles(data.sort((a, b) => b.uploadedAt - a.uploadedAt));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, filesPath.path));
     return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); };
   }, [user]);
 
   const updateCloudDoc = async (collName: string, id: string, data: any) => {
     if (!user) return;
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, collName, id);
-    await setDoc(docRef, data, { merge: true });
+    try {
+      await setDoc(docRef, data, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, docRef.path);
+    }
   };
   const deleteCloudDoc = async (collName: string, id: string) => {
     if (!user) return;
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, collName, id);
-    await deleteDoc(docRef);
+    try {
+      await deleteDoc(docRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, docRef.path);
+    }
   };
 
   const handleTxnChange = (id: string, field: string, value: any) => {
