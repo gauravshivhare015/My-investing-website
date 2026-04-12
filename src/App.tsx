@@ -7,7 +7,8 @@ import {
   TrendingUp, IndianRupee, Activity, 
   Calendar, Wallet, ArrowUpRight, ArrowDownRight,
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
-  Copy, Check, MessageSquare, Search, Target, Sparkles, Loader2, Sun, Moon
+  Copy, Check, MessageSquare, Search, Target, Sparkles, Loader2, Sun, Moon,
+  UploadCloud, FileText, Image as ImageIcon, File
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -19,6 +20,25 @@ import { auth, db } from './firebase';
 import { GoogleGenAI } from '@google/genai';
 import Markdown from 'react-markdown';
 import gsap from 'gsap';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title as ChartJSTitle,
+  Tooltip as ChartJSTooltip,
+  Legend as ChartJSLegend,
+} from 'chart.js';
+import { Bar as ChartJSBar } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ChartJSTitle,
+  ChartJSTooltip,
+  ChartJSLegend
+);
 
 const appId = 'portfolio-tracker-pro';
 
@@ -278,6 +298,162 @@ const AnimatedLogo = () => {
 };
 
 // --- UI Components ---
+const NetSavingsChart = ({ transactions, isDarkMode }: { transactions: any[], isDarkMode: boolean }) => {
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+
+  const chartData = useMemo(() => {
+    if (selectedYear === null) {
+      // Yearly view
+      const yearlyData: Record<number, number> = {};
+      transactions.forEach(t => {
+        if (!t.date) return;
+        const date = new Date(t.date);
+        const year = date.getFullYear();
+        const net = (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0);
+        yearlyData[year] = (yearlyData[year] || 0) + net;
+      });
+      
+      const years = Object.keys(yearlyData).map(Number).sort();
+      return {
+        labels: years.map(String),
+        datasets: [
+          {
+            label: 'Net Savings',
+            data: years.map(y => yearlyData[y]),
+            backgroundColor: isDarkMode ? '#eab308' : '#ca8a04',
+            borderRadius: 4,
+          }
+        ]
+      };
+    } else {
+      // Monthly view
+      const monthlyData: Record<number, number> = {};
+      for (let i = 0; i < 12; i++) monthlyData[i] = 0;
+      
+      transactions.forEach(t => {
+        if (!t.date) return;
+        const date = new Date(t.date);
+        if (date.getFullYear() === selectedYear) {
+          const month = date.getMonth();
+          const net = (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0);
+          monthlyData[month] += net;
+        }
+      });
+      
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return {
+        labels: months,
+        datasets: [
+          {
+            label: `Net Savings (${selectedYear})`,
+            data: months.map((_, i) => monthlyData[i]),
+            backgroundColor: isDarkMode ? '#06b6d4' : '#0891b2',
+            borderRadius: 4,
+          }
+        ]
+      };
+    }
+  }, [transactions, selectedYear, isDarkMode]);
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    onClick: (event: any, elements: any[]) => {
+      if (elements.length > 0 && selectedYear === null) {
+        const index = elements[0].index;
+        const year = Number(chartData.labels[index]);
+        setSelectedYear(year);
+      }
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: isDarkMode ? '#09090b' : '#ffffff',
+        titleColor: isDarkMode ? '#71717a' : '#52525b',
+        bodyColor: isDarkMode ? '#ffffff' : '#09090b',
+        borderColor: isDarkMode ? '#27272a' : '#e4e4e7',
+        borderWidth: 1,
+        padding: 10,
+        displayColors: false,
+        callbacks: {
+          label: function(context: any) {
+            let label = context.dataset.label || '';
+            if (label) {
+              label += ': ';
+            }
+            if (context.parsed.y !== null) {
+              label += new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(context.parsed.y);
+            }
+            return label;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+        ticks: {
+          color: '#71717a',
+          font: {
+            size: 10,
+            weight: 600 as const,
+          }
+        },
+        border: {
+          display: false,
+        }
+      },
+      y: {
+        grid: {
+          color: isDarkMode ? '#1f1f22' : '#e4e4e7',
+          drawBorder: false,
+        },
+        ticks: {
+          color: '#71717a',
+          font: {
+            size: 10,
+            weight: 600 as const,
+          },
+          callback: function(value: any) {
+            return '₹' + (value / 1000).toFixed(0) + 'k';
+          }
+        },
+        border: {
+          display: false,
+        }
+      }
+    },
+    animation: {
+      duration: 500,
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden mt-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+        <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs opacity-50">
+          Net Savings {selectedYear ? `(${selectedYear})` : '(Yearly)'}
+        </h3>
+        {selectedYear !== null && (
+          <button 
+            onClick={() => setSelectedYear(null)}
+            className="flex items-center gap-2 px-4 py-2 text-[10px] md:text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-slate-900 dark:hover:text-white bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-all"
+          >
+            ← Back to Yearly Overview
+          </button>
+        )}
+      </div>
+      <div className="h-[300px] md:h-[400px] w-full cursor-pointer">
+        <ChartJSBar data={chartData} options={options} />
+      </div>
+    </div>
+  );
+};
+
 const MetricCard = ({ title, value, icon: Icon, subtext, trend, highlightColor = 'yellow' }: any) => {
   const colorClass = highlightColor === 'cyan' ? 'text-cyan-400' : 'text-yellow-500';
   const borderClass = highlightColor === 'cyan' ? 'hover:border-cyan-500/30' : 'hover:border-yellow-500/30';
@@ -491,6 +667,7 @@ export default function App() {
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
   const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
   const [prompts, setPrompts] = useState<any[]>([]);
+  const [files, setFiles] = useState<any[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -562,6 +739,7 @@ export default function App() {
     const histPath = collection(db, 'artifacts', appId, 'users', user.uid, 'history');
     const benchPath = collection(db, 'artifacts', appId, 'users', user.uid, 'benchmark');
     const promptsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'prompts');
+    const filesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'files');
 
     const unsubTxns = onSnapshot(txnsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -582,7 +760,11 @@ export default function App() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPrompts([...data, { id: crypto.randomUUID(), title: '', content: '' }]);
     });
-    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); };
+    const unsubFiles = onSnapshot(filesPath, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setFiles(data.sort((a, b) => b.uploadedAt - a.uploadedAt));
+    });
+    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); };
   }, [user]);
 
   const updateCloudDoc = async (collName: string, id: string, data: any) => {
@@ -645,6 +827,48 @@ export default function App() {
         });
         await updateCloudDoc(collName, id, data);
       }
+    }
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const processFiles = async (uploadedFiles: File[]) => {
+    for (const file of uploadedFiles) {
+      if (!file.type.includes('pdf') && !file.type.includes('jpeg') && !file.type.includes('jpg')) {
+        alert(`File ${file.name} is not a supported format. Only PDF and JPEG are allowed.`);
+        continue;
+      }
+      if (file.size > 800000) {
+        alert(`File ${file.name} is too large. Please upload files under 800KB.`);
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64 = event.target?.result;
+        const id = crypto.randomUUID();
+        await updateCloudDoc('files', id, {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          data: base64,
+          uploadedAt: Date.now()
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(Array.from(e.target.files));
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(Array.from(e.dataTransfer.files));
     }
   };
 
@@ -789,9 +1013,40 @@ export default function App() {
                 </div>
               </div>
 
+              <NetSavingsChart transactions={validTxns} isDarkMode={isDarkMode} />
+
               <div className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-yellow-500 transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-yellow-500/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
                 {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<PromptCard key={p.id} title={p.title} content={p.content} />))}</div>) : (<div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
+              </div>
+
+              <div className="space-y-6 pb-10">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-500"><File size={20} /></div>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Documents</h3>
+                  </div>
+                </div>
+                {files.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                    {files.map(f => (
+                      <a key={f.id} href={f.data} download={f.name} className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 border border-black/5 dark:border-white/5 shadow-lg hover:border-cyan-500/30 transition-all group flex items-center gap-4 cursor-pointer">
+                        <div className="p-3 bg-black/5 dark:bg-white/5 rounded-xl group-hover:bg-cyan-500/10 transition-colors">
+                          {f.type.includes('pdf') ? <FileText size={24} className="text-rose-500"/> : <ImageIcon size={24} className="text-cyan-500"/>}
+                        </div>
+                        <div className="overflow-hidden">
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{f.name}</h4>
+                          <p className="text-xs text-zinc-500">{(f.size / 1024).toFixed(1)} KB • {new Date(f.uploadedAt).toLocaleDateString()}</p>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center">
+                    <File size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" />
+                    <p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">No documents uploaded yet.</p>
+                  </div>
+                )}
               </div>
 
               <div className="pb-10">
@@ -812,6 +1067,43 @@ export default function App() {
                 <Sheet title="Benchmark Sim" coll="benchmark" data={benchmarkHistory} onEdit={handleBmChange} onDelete={(id: string) => deleteCloudDoc('benchmark', id)} keys={['date','price']} onPaste={(e: any) => handlePaste(e,'benchmark',['date','price'])} />
               </div>
               <div className="border-t border-black/5 dark:border-white/5 pt-6 md:pt-10"><Sheet title="Prompts Repository" coll="prompts" data={prompts} onEdit={handlePromptChange} onDelete={(id: string) => deleteCloudDoc('prompts', id)} keys={['title','content']} onPaste={(e: any) => handlePaste(e,'prompts',['title','content'])} /></div>
+              
+              <div className="border-t border-black/5 dark:border-white/5 pt-6 md:pt-10">
+                <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-6 shadow-2xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[10px] font-black tracking-[0.2em] text-zinc-500 uppercase">Document Upload</h3>
+                  </div>
+                  <label 
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                    className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${isDragging ? 'border-yellow-500 bg-yellow-500/[0.05]' : 'border-black/10 dark:border-white/10 hover:bg-yellow-500/[0.02] hover:border-yellow-500/30'}`}
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <UploadCloud className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-yellow-500' : 'text-zinc-400 group-hover:text-yellow-500'}`} />
+                      <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400"><span className="font-semibold text-slate-900 dark:text-white">Click to upload</span> or drag and drop</p>
+                      <p className="text-xs text-zinc-500">PDF, JPG or JPEG (MAX. 800KB)</p>
+                    </div>
+                    <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg" multiple onChange={handleFileUpload} />
+                  </label>
+                  
+                  {files.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {files.map(f => (
+                        <div key={f.id} className="flex items-center justify-between p-3 bg-black/5 dark:bg-white/5 rounded-lg group/item transition-colors hover:bg-black/10 dark:hover:bg-white/10">
+                          <div className="flex items-center gap-3">
+                            {f.type.includes('pdf') ? <FileText size={16} className="text-rose-500"/> : <ImageIcon size={16} className="text-cyan-500"/>}
+                            <span className="text-xs font-medium text-slate-900 dark:text-white truncate max-w-[200px] md:max-w-[300px]">{f.name}</span>
+                          </div>
+                          <button onClick={() => deleteCloudDoc('files', f.id)} className="text-zinc-400 hover:text-rose-500 transition-colors p-1">
+                            <Trash2 size={14}/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -831,7 +1123,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste }: any) {
             {data.map((row: any, i: number) => (
               <tr key={row.id} className="border-b border-black/5 dark:border-white/5 hover:bg-yellow-500/[0.02] group transition-colors">
                 <td className="p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[10px] w-12 text-center">{i+1}</td>
-                {keys.map((k: string) => (<td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">{k === 'content' ? (<textarea value={row[k] || ''} onChange={e => onEdit(row.id, k, e.target.value)} onPaste={onPaste} placeholder="..." className="w-full p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] focus:text-slate-900 dark:text-white transition-colors resize-none min-h-[56px] font-mono text-[11px] placeholder:text-zinc-300 dark:text-zinc-800" rows={1} />) : (<input type={k==='date'?'date': (k === 'title' ? 'text' : 'number')} value={row[k] === undefined ? '' : row[k]} onPaste={onPaste} onChange={e => onEdit(row.id, k, e.target.value)} placeholder={k==='date'?'': '0.00'} className="w-full p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] focus:text-slate-900 dark:text-white transition-colors font-mono text-[11px] h-14 placeholder:text-zinc-300 dark:text-zinc-800" />)}</td>))}
+                {keys.map((k: string) => (<td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">{k === 'content' ? (<textarea value={row[k] || ''} onChange={e => onEdit(row.id, k, e.target.value)} onPaste={onPaste} placeholder="..." className="w-full p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] text-slate-900 dark:text-white transition-colors resize-none min-h-[56px] font-mono text-[11px] placeholder:text-zinc-400 dark:placeholder:text-zinc-600" rows={1} />) : (<input type={k==='date'?'date': (k === 'title' ? 'text' : 'number')} value={row[k] === undefined ? '' : row[k]} onPaste={onPaste} onChange={e => onEdit(row.id, k, e.target.value)} placeholder={k==='date'?'': '0.00'} className="w-full p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] text-slate-900 dark:text-white transition-colors font-mono text-[11px] h-14 placeholder:text-zinc-400 dark:placeholder:text-zinc-600" />)}</td>))}
                 <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-14"><button onClick={() => onDelete(row.id)} className="w-full h-full p-4 text-zinc-700 hover:text-rose-500 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"><Trash2 size={16}/></button></td>
               </tr>
             ))}
