@@ -8,8 +8,9 @@ import {
   Calendar, Wallet, ArrowUpRight, ArrowDownRight,
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sparkles, Loader2, Sun, Moon,
-  UploadCloud, FileText, Image as ImageIcon, File
+  UploadCloud, FileText, Image as ImageIcon, File, Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 // --- Firebase Imports ---
 import { onAuthStateChanged, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
@@ -937,6 +938,24 @@ export default function App() {
   const validPrompts = useMemo(() => prompts.filter(p => p.title && p.content), [prompts]);
   const filteredPrompts = useMemo(() => promptSearch ? validPrompts.filter(p => p.title.toLowerCase().includes(promptSearch.toLowerCase()) || p.content.toLowerCase().includes(promptSearch.toLowerCase())) : validPrompts, [validPrompts, promptSearch]);
 
+  const handleDownload = () => {
+    const wb = XLSX.utils.book_new();
+    
+    const txnData = validTxns.map(t => ({ Date: t.date, Deposit: t.deposit, Withdrawal: t.withdrawal }));
+    const wsTxn = XLSX.utils.json_to_sheet(txnData);
+    XLSX.utils.book_append_sheet(wb, wsTxn, 'Transactions');
+    
+    const histData = validHistory.map(h => ({ Date: h.date, 'Market Value': h.marketValue }));
+    const wsHist = XLSX.utils.json_to_sheet(histData);
+    XLSX.utils.book_append_sheet(wb, wsHist, 'Portfolio Value');
+
+    const promptData = validPrompts.map(p => ({ Title: p.title, Content: p.content }));
+    const wsPrompts = XLSX.utils.json_to_sheet(promptData);
+    XLSX.utils.book_append_sheet(wb, wsPrompts, 'Prompts');
+
+    XLSX.writeFile(wb, 'Portfolio_Data.xlsx');
+  };
+
   const metrics = useMemo(() => {
     const curMV = validHistory.length > 0 ? Number(validHistory[validHistory.length - 1].marketValue) : 0;
     let net = 0; validTxns.forEach(t => net += (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0));
@@ -1011,6 +1030,10 @@ export default function App() {
                 <Cloud size={14} className="text-emerald-400" />
                 <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-tight">Cloud Sync</span>
               </div>
+              <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors cursor-pointer">
+                <Download size={14} className="text-blue-400" />
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tight">Download</span>
+              </button>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-full border border-black/10 dark:border-white/10">
