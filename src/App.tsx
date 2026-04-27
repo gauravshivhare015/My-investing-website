@@ -13,7 +13,7 @@ import {
 import * as XLSX from 'xlsx';
 
 // --- Firebase Imports ---
-import { onAuthStateChanged, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { onAuthStateChanged, GoogleAuthProvider, signInWithCredential, signOut } from 'firebase/auth';
 import { doc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
@@ -745,6 +745,10 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoadingAuth(false);
+    }, (error) => {
+      console.error("Auth state change error", error);
+      setAuthError(`Auth state error: ${error.message}`);
+      setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, []);
@@ -752,8 +756,8 @@ export default function App() {
   useEffect(() => {
     if (!loadingAuth && !user) {
       const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-      if (!clientId) {
-        setAuthError("VITE_GOOGLE_CLIENT_ID is missing in environment variables.");
+      if (!clientId || clientId === "YOUR_GOOGLE_CLIENT_ID") {
+        setAuthError("VITE_GOOGLE_CLIENT_ID is missing or not configured in environment variables. Please add it to your secrets.");
         return;
       }
 
@@ -761,27 +765,38 @@ export default function App() {
         try {
           const credential = GoogleAuthProvider.credential(response.credential);
           await signInWithCredential(auth, credential);
+          setAuthError(null);
         } catch (error: any) {
           console.error("GSI Login failed", error);
-          setAuthError(error.message);
+          setAuthError(`Firebase Sign-in Error: ${error.message} (Code: ${error.code})`);
         }
       };
 
-      // @ts-ignore
-      if (window.google) {
+      const initGsi = () => {
         // @ts-ignore
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: handleCredentialResponse,
-          context: 'signin',
-          ux_mode: 'popup',
-        });
-        // @ts-ignore
-        window.google.accounts.id.renderButton(
-          document.getElementById("gsi-button-container"),
-          { theme: isDarkMode ? "filled_black" : "outline", size: "large", shape: "pill" }
-        );
-      }
+        if (window.google && window.google.accounts) {
+          // @ts-ignore
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleCredentialResponse,
+            context: 'signin',
+            ux_mode: 'popup',
+          });
+          const btn = document.getElementById("gsi-button-container");
+          if (btn) {
+            // @ts-ignore
+            window.google.accounts.id.renderButton(
+              btn,
+              { theme: isDarkMode ? "filled_black" : "outline", size: "large", shape: "pill" }
+            );
+          }
+        } else {
+          // Retry in 500ms if script not loaded
+          setTimeout(initGsi, 500);
+        }
+      };
+
+      initGsi();
     }
   }, [loadingAuth, user, isDarkMode]);
 
@@ -835,6 +850,16 @@ export default function App() {
       await deleteDoc(docRef);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, docRef.path);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      setAuthError(null);
+    } catch (error: any) {
+      console.error("Logout failed", error);
     }
   };
 
@@ -964,8 +989,35 @@ export default function App() {
     cashFlows.push({ date: new Date(), amount: -curMV });
     const xirr = calculateXIRR(cashFlows);
     const rate = (xirr !== null && xirr > 0 && xirr < 0.5) ? xirr : 0.10;
-    return { currentMV: curMV, net, pl: curMV - net, avgY, avgM: avgY/12, avgD: avgY/365.25, xirr, rate, f5: curMV*Math.pow(1+rate,5) + avgY*((Math.pow(1+rate,5)-1)/rate), f10: curMV*Math.pow(1+rate,10) + avgY*((Math.pow(1+rate,10)-1)/rate), f20: curMV*Math.pow(1+rate,20) + avgY*((Math.pow(1+rate,20)-1)/rate) };
-  }, [validTxns, validHistory]);
+
+    // Calculate Benchmark CAGR
+    let benchCAGR = null;
+    if (validBench.length > 1) {
+      const startPrice = Number(validBench[0].price);
+      const endPrice = Number(validBench[validBench.length - 1].price);
+      const startTime = new Date(validBench[0].date).getTime();
+      const endTime = new Date(validBench[validBench.length - 1].date).getTime();
+      const years = Math.max(0.001, (endTime - startTime) / (1000 * 60 * 60 * 24 * 365.25));
+      if (startPrice > 0 && endPrice > 0) {
+        benchCAGR = Math.pow(endPrice / startPrice, 1 / years) - 1;
+      }
+    }
+
+    return { 
+      currentMV: curMV, 
+      net, 
+      pl: curMV - net, 
+      avgY, 
+      avgM: avgY/12, 
+      avgD: avgY/365.25, 
+      xirr, 
+      rate, 
+      benchCAGR,
+      f5: curMV*Math.pow(1+rate,5) + avgY*((Math.pow(1+rate,5)-1)/rate), 
+      f10: curMV*Math.pow(1+rate,10) + avgY*((Math.pow(1+rate,10)-1)/rate), 
+      f20: curMV*Math.pow(1+rate,20) + avgY*((Math.pow(1+rate,20)-1)/rate) 
+    };
+  }, [validTxns, validHistory, validBench]);
 
   const chartData = useMemo(() => {
     const dates = Array.from(new Set([...validTxns.map(t => t.date), ...validHistory.map(p => p.date), ...validBench.map(b => b.date)])).sort();
@@ -982,11 +1034,25 @@ export default function App() {
     return (
       <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center">
         <InteractiveBackground isDarkMode={isDarkMode} />
-        <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center shadow-2xl text-center">
+        <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-sm:mx-4 max-w-sm flex flex-col items-center shadow-2xl text-center">
           <AnimatedLogo />
           <h2 className="text-xl font-bold mt-6 mb-2 text-rose-500">Authentication Error</h2>
-          <p className="text-zinc-600 dark:text-zinc-400 text-sm">{authError}</p>
-          <p className="text-zinc-500 text-xs mt-4">Please check your Google Client ID and Firebase configuration.</p>
+          <p className="text-zinc-600 dark:text-zinc-400 text-sm mb-4">{authError}</p>
+          <div className="flex flex-col gap-3 w-full">
+            <button 
+              onClick={() => { setAuthError(null); setLoadingAuth(true); setTimeout(() => setLoadingAuth(false), 100); }} 
+              className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-white dark:text-black font-bold rounded-xl transition-all"
+            >
+              Retry
+            </button>
+            <button 
+              onClick={handleLogout} 
+              className="w-full py-3 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-zinc-600 dark:text-zinc-400 font-bold rounded-xl transition-all"
+            >
+              Sign Out
+            </button>
+          </div>
+          <p className="text-zinc-500 text-[10px] mt-6">Please check your Google Client ID and Firebase configuration.</p>
         </div>
       </div>
     );
@@ -1041,6 +1107,13 @@ export default function App() {
                 <button onClick={() => setActiveTab('data')} className={`px-4 md:px-6 py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-yellow-500 text-white dark:text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 hover:text-slate-900 dark:text-white'}`}>Data</button>
               </div>
               <button 
+                onClick={handleLogout}
+                className="p-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all"
+                title="Log Out"
+              >
+                <Trash2 size={20} />
+              </button>
+              <button 
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all"
                 aria-label="Toggle theme"
@@ -1066,7 +1139,7 @@ export default function App() {
                     <div className="flex justify-between items-baseline"><span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 tracking-widest uppercase">Daily</span><span className="text-sm font-medium text-zinc-400 dark:text-zinc-600 dark:text-zinc-400">{formatCurrency(metrics.avgD)}</span></div>
                   </div>
                 </div>
-                <MetricCard title="XIRR" value={formatPercent(metrics.xirr)} icon={Activity} trend={metrics.xirr >= 0 ? 'up' : 'down'} subtext="Annualized Return" />
+                <MetricCard title="XIRR" value={formatPercent(metrics.xirr)} icon={Activity} trend={metrics.xirr >= 0 ? 'up' : 'down'} subtext={`Return vs Bench: ${formatPercent(metrics.benchCAGR)}`} />
                 <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-cyan-500/30">
                   <div className="flex items-center justify-between mb-5"><h3 className="text-xs md:text-sm font-medium text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">Future Wealth</h3><Rocket className="text-cyan-400" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
