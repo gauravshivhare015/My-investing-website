@@ -7,7 +7,7 @@ import {
   TrendingUp, IndianRupee, Activity, 
   Calendar, Wallet, ArrowUpRight, ArrowDownRight,
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
-  Copy, Check, MessageSquare, Search, Target, Sparkles, Loader2, Sun, Moon,
+  Copy, Check, MessageSquare, Search, Target, Sun, Moon,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -69,8 +69,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 // --- AI Imports ---
-import { GoogleGenAI } from '@google/genai';
-import Markdown from 'react-markdown';
 import gsap from 'gsap';
 import {
   Chart as ChartJS,
@@ -611,101 +609,7 @@ const getPriceForDate = (dateStr: string, sortedBenchData: any[]) => {
   return Number(sortedBenchData[0].price);
 };
 
-const GeminiInsights = ({ metrics, transactions, prompts }: any) => {
-  const [query, setQuery] = useState('');
-  const [response, setResponse] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [isAuto, setIsAuto] = useState(false);
 
-  const handleAnalyze = async (isCustom: boolean) => {
-    if (isCustom && !query.trim()) return;
-    setLoading(true);
-    setIsAuto(!isCustom);
-    setResponse('');
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const context = `
-        You are an expert financial advisor AI embedded in a portfolio tracking app.
-        Here is the user's current portfolio data:
-        - Current Market Value: ₹${metrics.currentMV.toFixed(2)}
-        - Total Net Deposits: ₹${metrics.net.toFixed(2)}
-        - Unrealized P/L: ₹${metrics.pl.toFixed(2)}
-        - XIRR (Annualized Return): ${(metrics.xirr * 100).toFixed(2)}%
-        - Projected 10-Year Wealth: ₹${metrics.f10.toFixed(2)}
-        
-        ${isCustom ? `User Question: ${query}` : `Please provide a concise, insightful 3-paragraph analysis of their portfolio performance. Highlight strengths, potential risks, and a brief encouraging outlook. Format with markdown.`}
-      `;
-      
-      const result = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: context,
-      });
-      setResponse(result.text || 'No response generated.');
-    } catch (error) {
-      console.error(error);
-      setResponse('An error occurred while generating insights. Please try again.');
-    }
-    setLoading(false);
-    setIsAuto(false);
-  };
-
-  return (
-    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-6 md:p-8 border border-black/5 dark:border-white/5 shadow-2xl relative overflow-hidden group hover:border-yellow-500/30 transition-all duration-500">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-white/0 group-hover:bg-yellow-500/50 blur-[2px] transition-all duration-500" />
-      
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2.5 bg-yellow-500/10 rounded-xl text-yellow-500">
-          <Sparkles size={24} strokeWidth={2.5} />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight uppercase">Gemini Intelligence</h3>
-          <p className="text-xs text-zinc-500 font-medium">AI-powered portfolio analysis and insights</p>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <input 
-          type="text" 
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAnalyze(true)}
-          placeholder="Ask Gemini..." 
-          className="flex-1 bg-black/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-yellow-500/50 transition-all placeholder:text-zinc-600 dark:text-zinc-400 font-medium"
-        />
-        <div className="flex gap-2">
-          <button 
-            onClick={() => handleAnalyze(true)}
-            disabled={loading || !query.trim()}
-            className="flex-1 sm:flex-none px-4 py-3 bg-black/5 dark:bg-white/5 hover:bg-white/10 disabled:opacity-50 text-slate-900 dark:text-white text-sm font-bold rounded-xl transition-all border border-black/5 dark:border-white/5 flex items-center justify-center min-w-[80px]"
-          >
-            {loading && !isAuto ? <Loader2 size={18} className="animate-spin" /> : 'Ask'}
-          </button>
-          <button 
-            onClick={() => handleAnalyze(false)}
-            disabled={loading}
-            className="flex-[2] sm:flex-none px-5 py-3 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-white dark:text-black text-sm font-bold rounded-xl transition-all shadow-[0_0_15px_rgba(234,179,8,0.2)] flex items-center justify-center min-w-[120px]"
-          >
-            {loading && isAuto ? <Loader2 size={18} className="animate-spin" /> : 'Analyze'}
-          </button>
-        </div>
-      </div>
-
-      {(response || loading) && (
-        <div className="bg-gray-100 dark:bg-black/40 rounded-xl p-5 border border-black/5 dark:border-white/5 min-h-[100px]">
-          {loading && !response ? (
-            <div className="flex items-center justify-center h-full text-yellow-500 py-8">
-              <Loader2 size={32} className="animate-spin" />
-            </div>
-          ) : (
-            <div className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed prose prose-invert max-w-none prose-p:mb-4 prose-headings:text-slate-900 dark:text-white prose-headings:font-bold prose-a:text-yellow-500 prose-strong:text-slate-900 dark:text-white">
-              <Markdown>{response}</Markdown>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1211,7 +1115,7 @@ export default function App() {
               </div>
 
               <div className="pb-10">
-                <GeminiInsights metrics={metrics} transactions={validTxns} prompts={validPrompts} />
+
               </div>
             </div>
           )}
