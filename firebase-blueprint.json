@@ -40,6 +40,19 @@
         "title": { "type": "string" },
         "content": { "type": "string" }
       }
+    },
+    "File": {
+      "title": "File",
+      "description": "An uploaded document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "size": { "type": "number" },
+        "data": { "type": "string" },
+        "uploadedAt": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -58,6 +71,10 @@
     "/artifacts/{appId}/users/{userId}/prompts/{promptId}": {
       "schema": { "$ref": "#/entities/Prompt" },
       "description": "User saved prompts"
+    },
+    "/artifacts/{appId}/users/{userId}/files/{fileId}": {
+      "schema": { "$ref": "#/entities/File" },
+      "description": "User uploaded files"
     }
   }
 }
