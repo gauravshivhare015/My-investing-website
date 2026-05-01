@@ -7,68 +7,18 @@ import {
   TrendingUp, IndianRupee, Activity, 
   Calendar, Wallet, ArrowUpRight, ArrowDownRight,
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
-  Copy, Check, MessageSquare, Search, Target, Sun, Moon,
-  UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut
+  Copy, Check, MessageSquare, Search, Target, Sparkles, Loader2, Sun, Moon,
+  UploadCloud, FileText, Image as ImageIcon, File
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 
 // --- Firebase Imports ---
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { onAuthStateChanged, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { doc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
 // --- AI Imports ---
+import { GoogleGenAI } from '@google/genai';
+import Markdown from 'react-markdown';
 import gsap from 'gsap';
 import {
   Chart as ChartJS,
@@ -483,7 +433,7 @@ const NetSavingsChart = ({ transactions, isDarkMode }: { transactions: any[], is
   };
 
   return (
-    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden mt-6">
+    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden mt-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs opacity-50">
           Net Savings {selectedYear ? `(${selectedYear})` : '(Yearly)'}
@@ -491,13 +441,13 @@ const NetSavingsChart = ({ transactions, isDarkMode }: { transactions: any[], is
         {selectedYear !== null && (
           <button 
             onClick={() => setSelectedYear(null)}
-            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 text-[9px] md:text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-slate-900 dark:hover:text-white bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-all self-start md:self-auto"
+            className="flex items-center gap-2 px-4 py-2 text-[10px] md:text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-slate-900 dark:hover:text-white bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-all"
           >
-            ← Back
+            ← Back to Yearly Overview
           </button>
         )}
       </div>
-      <div className="h-[250px] md:h-[400px] w-full cursor-pointer">
+      <div className="h-[300px] md:h-[400px] w-full cursor-pointer">
         <ChartJSBar data={chartData} options={options} />
       </div>
     </div>
@@ -511,18 +461,18 @@ const MetricCard = ({ title, value, icon: Icon, subtext, trend, highlightColor =
   const lineGlow = highlightColor === 'cyan' ? 'group-hover:bg-cyan-500/50' : 'group-hover:bg-yellow-500/50';
 
   return (
-    <div className={`relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 ${borderClass}`}>
+    <div className={`relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 ${borderClass}`}>
       <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-white/0 ${lineGlow} blur-[2px] transition-all duration-500`} />
-      <div className="flex items-center justify-between mb-3 md:mb-4">
-        <h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 tracking-wide uppercase">{title}</h3>
-        <div className={`p-1.5 md:p-2 bg-black/5 dark:bg-white/5 rounded-lg md:rounded-xl ${colorClass} group-hover:scale-110 ${glowClass} transition-all duration-300`}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs md:text-sm font-medium text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 tracking-wide uppercase">{title}</h3>
+        <div className={`p-2 bg-black/5 dark:bg-white/5 rounded-lg md:rounded-xl ${colorClass} group-hover:scale-110 ${glowClass} transition-all duration-300`}>
           <Icon size={18} strokeWidth={2.5} />
         </div>
       </div>
       <div>
-        <div className="text-xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-1 tracking-tight truncate">{value}</div>
+        <div className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-1 tracking-tight truncate">{value}</div>
         {subtext && (
-          <div className={`text-[10px] md:text-sm flex items-center gap-1 mt-1 md:mt-2 font-medium ${trend === 'up' ? 'text-emerald-400' : trend === 'down' ? 'text-rose-400' : 'text-zinc-500'}`}>
+          <div className={`text-xs md:text-sm flex items-center gap-1.5 mt-2 font-medium ${trend === 'up' ? 'text-emerald-400' : trend === 'down' ? 'text-rose-400' : 'text-zinc-500'}`}>
             {trend === 'up' && <ArrowUpRight size={14} strokeWidth={2.5} />}
             {trend === 'down' && <ArrowDownRight size={14} strokeWidth={2.5} />}
             {subtext}
@@ -609,7 +559,99 @@ const getPriceForDate = (dateStr: string, sortedBenchData: any[]) => {
   return Number(sortedBenchData[0].price);
 };
 
+const GeminiInsights = ({ metrics, transactions, prompts }: any) => {
+  const [query, setQuery] = useState('');
+  const [response, setResponse] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [isAuto, setIsAuto] = useState(false);
 
+  const handleAnalyze = async (isCustom: boolean) => {
+    if (isCustom && !query.trim()) return;
+    setLoading(true);
+    setIsAuto(!isCustom);
+    setResponse('');
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const context = `
+        You are an expert financial advisor AI embedded in a portfolio tracking app.
+        Here is the user's current portfolio data:
+        - Current Market Value: ₹${metrics.currentMV.toFixed(2)}
+        - Total Net Deposits: ₹${metrics.net.toFixed(2)}
+        - Unrealized P/L: ₹${metrics.pl.toFixed(2)}
+        - XIRR (Annualized Return): ${(metrics.xirr * 100).toFixed(2)}%
+        - Projected 10-Year Wealth: ₹${metrics.f10.toFixed(2)}
+        
+        ${isCustom ? `User Question: ${query}` : `Please provide a concise, insightful 3-paragraph analysis of their portfolio performance. Highlight strengths, potential risks, and a brief encouraging outlook. Format with markdown.`}
+      `;
+      
+      const result = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: context,
+      });
+      setResponse(result.text || 'No response generated.');
+    } catch (error) {
+      console.error(error);
+      setResponse('An error occurred while generating insights. Please try again.');
+    }
+    setLoading(false);
+    setIsAuto(false);
+  };
+
+  return (
+    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-6 md:p-8 border border-black/5 dark:border-white/5 shadow-2xl relative overflow-hidden group hover:border-yellow-500/30 transition-all duration-500">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-white/0 group-hover:bg-yellow-500/50 blur-[2px] transition-all duration-500" />
+      
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2.5 bg-yellow-500/10 rounded-xl text-yellow-500">
+          <Sparkles size={24} strokeWidth={2.5} />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight uppercase">Gemini Intelligence</h3>
+          <p className="text-xs text-zinc-500 font-medium">AI-powered portfolio analysis and insights</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <input 
+          type="text" 
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAnalyze(true)}
+          placeholder="Ask Gemini about your portfolio..." 
+          className="flex-1 bg-black/50 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-yellow-500/50 transition-all placeholder:text-zinc-400 dark:text-zinc-600 font-medium"
+        />
+        <button 
+          onClick={() => handleAnalyze(true)}
+          disabled={loading || !query.trim()}
+          className="px-6 py-3 bg-black/5 dark:bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-black/5 dark:bg-white/5 text-slate-900 dark:text-white text-sm font-bold rounded-xl transition-all border border-black/5 dark:border-white/5 flex items-center justify-center min-w-[100px]"
+        >
+          {loading && !isAuto ? <Loader2 size={18} className="animate-spin" /> : 'Ask'}
+        </button>
+        <button 
+          onClick={() => handleAnalyze(false)}
+          disabled={loading}
+          className="px-6 py-3 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-white dark:text-black text-sm font-bold rounded-xl transition-all shadow-[0_0_15px_rgba(234,179,8,0.2)] flex items-center justify-center min-w-[140px]"
+        >
+          {loading && isAuto ? <Loader2 size={18} className="animate-spin" /> : 'Auto Analyze'}
+        </button>
+      </div>
+
+      {(response || loading) && (
+        <div className="bg-gray-100 dark:bg-black/40 rounded-xl p-5 border border-black/5 dark:border-white/5 min-h-[100px]">
+          {loading && !response ? (
+            <div className="flex items-center justify-center h-full text-yellow-500 py-8">
+              <Loader2 size={32} className="animate-spin" />
+            </div>
+          ) : (
+            <div className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed prose prose-invert max-w-none prose-p:mb-4 prose-headings:text-slate-900 dark:text-white prose-headings:font-bold prose-a:text-yellow-500 prose-strong:text-slate-900 dark:text-white">
+              <Markdown>{response}</Markdown>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -651,29 +693,45 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoadingAuth(false);
-    }, (error) => {
-      console.error("Auth state change error", error);
-      setAuthError(`Auth state error: ${error.message}`);
-      setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, []);
 
-  const handleGoogleLogin = async () => {
-    setLoadingAuth(true);
-    setAuthError(null);
-    try {
-      const provider = new GoogleAuthProvider();
-      // Force account selection
-      provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
-    } catch (error: any) {
-      console.error("Google Login failed", error);
-      setAuthError(`Login Error: ${error.message} (Code: ${error.code})`);
-    } finally {
-      setLoadingAuth(false);
+  useEffect(() => {
+    if (!loadingAuth && !user) {
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        setAuthError("VITE_GOOGLE_CLIENT_ID is missing in environment variables.");
+        return;
+      }
+
+      const handleCredentialResponse = async (response: any) => {
+        try {
+          const credential = GoogleAuthProvider.credential(response.credential);
+          await signInWithCredential(auth, credential);
+        } catch (error: any) {
+          console.error("GSI Login failed", error);
+          setAuthError(error.message);
+        }
+      };
+
+      // @ts-ignore
+      if (window.google) {
+        // @ts-ignore
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleCredentialResponse,
+          context: 'signin',
+          ux_mode: 'popup',
+        });
+        // @ts-ignore
+        window.google.accounts.id.renderButton(
+          document.getElementById("gsi-button-container"),
+          { theme: isDarkMode ? "filled_black" : "outline", size: "large", shape: "pill" }
+        );
+      }
     }
-  };
+  }, [loadingAuth, user, isDarkMode]);
 
   useEffect(() => {
     if (!user) return;
@@ -684,58 +742,40 @@ export default function App() {
     const filesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'files');
 
     const unsubTxns = onSnapshot(txnsPath, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const sorted = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setTransactions([...sorted, { id: crypto.randomUUID(), date: '', deposit: '', withdrawal: '' }]);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, txnsPath.path));
+    });
     const unsubHist = onSnapshot(histPath, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const sorted = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setPortfolioHistory([...sorted, { id: crypto.randomUUID(), date: '', marketValue: '' }]);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, histPath.path));
+    });
     const unsubBench = onSnapshot(benchPath, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const sorted = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setBenchmarkHistory([...sorted, { id: crypto.randomUUID(), date: '', price: '' }]);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, benchPath.path));
+    });
     const unsubPrompts = onSnapshot(promptsPath, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPrompts([...data, { id: crypto.randomUUID(), title: '', content: '' }]);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, promptsPath.path));
+    });
     const unsubFiles = onSnapshot(filesPath, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setFiles(data.sort((a, b) => b.uploadedAt - a.uploadedAt));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, filesPath.path));
+    });
     return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); };
   }, [user]);
 
   const updateCloudDoc = async (collName: string, id: string, data: any) => {
     if (!user) return;
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, collName, id);
-    try {
-      await setDoc(docRef, data, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, docRef.path);
-    }
+    await setDoc(docRef, data, { merge: true });
   };
   const deleteCloudDoc = async (collName: string, id: string) => {
     if (!user) return;
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, collName, id);
-    try {
-      await deleteDoc(docRef);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, docRef.path);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setUser(null);
-      setAuthError(null);
-    } catch (error: any) {
-      console.error("Logout failed", error);
-    }
+    await deleteDoc(docRef);
   };
 
   const handleTxnChange = (id: string, field: string, value: any) => {
@@ -768,7 +808,7 @@ export default function App() {
   };
 
   const handlePaste = async (e: any, collName: string, keys: string[]) => {
-    const pastedData = (e.clipboardData || (window as any).clipboardData).getData('Text');
+    const pastedData = (e.clipboardData || window.clipboardData).getData('Text');
     if (!pastedData || !pastedData.includes('\t')) return;
     e.preventDefault();
     const rows = pastedData.trim().split('\n');
@@ -838,24 +878,6 @@ export default function App() {
   const validPrompts = useMemo(() => prompts.filter(p => p.title && p.content), [prompts]);
   const filteredPrompts = useMemo(() => promptSearch ? validPrompts.filter(p => p.title.toLowerCase().includes(promptSearch.toLowerCase()) || p.content.toLowerCase().includes(promptSearch.toLowerCase())) : validPrompts, [validPrompts, promptSearch]);
 
-  const handleDownload = () => {
-    const wb = XLSX.utils.book_new();
-    
-    const txnData = validTxns.map(t => ({ Date: t.date, Deposit: t.deposit, Withdrawal: t.withdrawal }));
-    const wsTxn = XLSX.utils.json_to_sheet(txnData);
-    XLSX.utils.book_append_sheet(wb, wsTxn, 'Transactions');
-    
-    const histData = validHistory.map(h => ({ Date: h.date, 'Market Value': h.marketValue }));
-    const wsHist = XLSX.utils.json_to_sheet(histData);
-    XLSX.utils.book_append_sheet(wb, wsHist, 'Portfolio Value');
-
-    const promptData = validPrompts.map(p => ({ Title: p.title, Content: p.content }));
-    const wsPrompts = XLSX.utils.json_to_sheet(promptData);
-    XLSX.utils.book_append_sheet(wb, wsPrompts, 'Prompts');
-
-    XLSX.writeFile(wb, 'Portfolio_Data.xlsx');
-  };
-
   const metrics = useMemo(() => {
     const curMV = validHistory.length > 0 ? Number(validHistory[validHistory.length - 1].marketValue) : 0;
     let net = 0; validTxns.forEach(t => net += (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0));
@@ -864,35 +886,8 @@ export default function App() {
     cashFlows.push({ date: new Date(), amount: -curMV });
     const xirr = calculateXIRR(cashFlows);
     const rate = (xirr !== null && xirr > 0 && xirr < 0.5) ? xirr : 0.10;
-
-    // Calculate Benchmark CAGR
-    let benchCAGR = null;
-    if (validBench.length > 1) {
-      const startPrice = Number(validBench[0].price);
-      const endPrice = Number(validBench[validBench.length - 1].price);
-      const startTime = new Date(validBench[0].date).getTime();
-      const endTime = new Date(validBench[validBench.length - 1].date).getTime();
-      const years = Math.max(0.001, (endTime - startTime) / (1000 * 60 * 60 * 24 * 365.25));
-      if (startPrice > 0 && endPrice > 0) {
-        benchCAGR = Math.pow(endPrice / startPrice, 1 / years) - 1;
-      }
-    }
-
-    return { 
-      currentMV: curMV, 
-      net, 
-      pl: curMV - net, 
-      avgY, 
-      avgM: avgY/12, 
-      avgD: avgY/365.25, 
-      xirr, 
-      rate, 
-      benchCAGR,
-      f5: curMV*Math.pow(1+rate,5) + avgY*((Math.pow(1+rate,5)-1)/rate), 
-      f10: curMV*Math.pow(1+rate,10) + avgY*((Math.pow(1+rate,10)-1)/rate), 
-      f20: curMV*Math.pow(1+rate,20) + avgY*((Math.pow(1+rate,20)-1)/rate) 
-    };
-  }, [validTxns, validHistory, validBench]);
+    return { currentMV: curMV, net, pl: curMV - net, avgY, avgM: avgY/12, avgD: avgY/365.25, xirr, rate, f5: curMV*Math.pow(1+rate,5) + avgY*((Math.pow(1+rate,5)-1)/rate), f10: curMV*Math.pow(1+rate,10) + avgY*((Math.pow(1+rate,10)-1)/rate), f20: curMV*Math.pow(1+rate,20) + avgY*((Math.pow(1+rate,20)-1)/rate) };
+  }, [validTxns, validHistory]);
 
   const chartData = useMemo(() => {
     const dates = Array.from(new Set([...validTxns.map(t => t.date), ...validHistory.map(p => p.date), ...validBench.map(b => b.date)])).sort();
@@ -909,25 +904,11 @@ export default function App() {
     return (
       <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center">
         <InteractiveBackground isDarkMode={isDarkMode} />
-        <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-sm:mx-4 max-w-sm flex flex-col items-center shadow-2xl text-center">
+        <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center shadow-2xl text-center">
           <AnimatedLogo />
           <h2 className="text-xl font-bold mt-6 mb-2 text-rose-500">Authentication Error</h2>
-          <p className="text-zinc-600 dark:text-zinc-400 text-sm mb-4">{authError}</p>
-          <div className="flex flex-col gap-3 w-full">
-            <button 
-              onClick={handleGoogleLogin} 
-              className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-white dark:text-black font-bold rounded-xl transition-all"
-            >
-              Retry
-            </button>
-            <button 
-              onClick={handleLogout} 
-              className="w-full py-3 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-zinc-600 dark:text-zinc-400 font-bold rounded-xl transition-all"
-            >
-              Sign Out
-            </button>
-          </div>
-          <p className="text-zinc-500 text-[10px] mt-6">Please check your Firebase configuration.</p>
+          <p className="text-zinc-600 dark:text-zinc-400 text-sm">{authError}</p>
+          <p className="text-zinc-500 text-xs mt-4">Please check your Google Client ID and Firebase configuration.</p>
         </div>
       </div>
     );
@@ -953,30 +934,7 @@ export default function App() {
           <AnimatedLogo />
           <h2 className="text-xl font-bold mt-6 mb-2 tracking-tight">Portfolio Tracker Pro</h2>
           <p className="text-zinc-500 text-sm mb-8 text-center">Sign in to access your dashboard.</p>
-          <button 
-            onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white dark:bg-black border border-black/10 dark:border-white/10 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all group"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path
-                fill="currentColor"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="currentColor"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
-              />
-            </svg>
-            <span className="text-sm font-bold">Sign in with Google</span>
-          </button>
+          <div id="gsi-button-container" className="w-full flex justify-center min-h-[44px]"></div>
         </div>
       </div>
     );
@@ -990,24 +948,16 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
             <div className="flex items-center gap-3">
               <AnimatedLogo />
-
-              <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
-                <Download size={12} className="text-blue-400" />
-                <span className="text-[9px] md:text-[10px] font-bold text-blue-400 uppercase tracking-tight">Export</span>
-              </button>
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+                <Cloud size={14} className="text-emerald-400" />
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-tight">Cloud Sync</span>
+              </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-full border border-black/10 dark:border-white/10 shrink-0">
-                <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-yellow-500 text-white dark:text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
-                <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-yellow-500 text-white dark:text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
+              <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-full border border-black/10 dark:border-white/10">
+                <button onClick={() => setActiveTab('dashboard')} className={`px-4 md:px-6 py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-yellow-500 text-white dark:text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 hover:text-slate-900 dark:text-white'}`}>Dashboard</button>
+                <button onClick={() => setActiveTab('data')} className={`px-4 md:px-6 py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-yellow-500 text-white dark:text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 hover:text-slate-900 dark:text-white'}`}>Data</button>
               </div>
-              <button 
-                onClick={handleLogout}
-                className="p-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all"
-                title="Log Out"
-              >
-                <LogOut size={18} />
-              </button>
               <button 
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all"
@@ -1019,52 +969,45 @@ export default function App() {
           </div>
         </nav>
 
-        <div className="max-w-7xl mx-auto px-4 py-4 md:py-10">
+        <div className="max-w-7xl mx-auto px-4 py-6 md:py-10">
           {activeTab === 'dashboard' && (
-            <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
+            <div className="space-y-12 animate-in fade-in duration-500">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                 <MetricCard title="Current Value" value={formatCurrency(metrics.currentMV)} icon={IndianRupee} subtext="Latest Snapshot" />
                 <MetricCard title="Net Deposits" value={formatCurrency(metrics.net)} icon={Wallet} subtext="Total Savings" />
                 <MetricCard title="Unrealized P/L" value={formatCurrency(metrics.pl)} icon={TrendingUp} trend={metrics.pl >= 0 ? 'up' : 'down'} subtext={metrics.pl >= 0 ? 'Profit' : 'Loss'} />
-                <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-yellow-500/30">
-                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Avg Savings</h3><Calendar className="text-yellow-500" size={18} strokeWidth={2.5} /></div>
+                <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-yellow-500/30">
+                  <div className="flex items-center justify-between mb-5"><h3 className="text-xs md:text-sm font-medium text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">Avg Savings</h3><Calendar className="text-yellow-500" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Annual</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.avgY)}</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Monthly</span><span className="text-sm md:text-base font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.avgM)}</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Daily</span><span className="text-[11px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400">{formatCurrency(metrics.avgD)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 tracking-widest uppercase">Annual</span><span className="text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.avgY)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 tracking-widest uppercase">Monthly</span><span className="text-base font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.avgM)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 tracking-widest uppercase">Daily</span><span className="text-sm font-medium text-zinc-400 dark:text-zinc-600 dark:text-zinc-400">{formatCurrency(metrics.avgD)}</span></div>
                   </div>
                 </div>
-                <MetricCard title="XIRR" value={formatPercent(metrics.xirr)} icon={Activity} trend={metrics.xirr >= 0 ? 'up' : 'down'} subtext={`Return vs Bench: ${formatPercent(metrics.benchCAGR)}`} />
-                <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-cyan-500/30">
-                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Future Wealth</h3><Rocket className="text-cyan-400" size={18} strokeWidth={2.5} /></div>
+                <MetricCard title="XIRR" value={formatPercent(metrics.xirr)} icon={Activity} trend={metrics.xirr >= 0 ? 'up' : 'down'} subtext="Annualized Return" />
+                <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-cyan-500/30">
+                  <div className="flex items-center justify-between mb-5"><h3 className="text-xs md:text-sm font-medium text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">Future Wealth</h3><Rocket className="text-cyan-400" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">5 Years</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.f5)}</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">10 Years</span><span className="text-sm md:text-base font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.f10)}</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-black text-cyan-600 tracking-widest uppercase">20 Years</span><span className="text-base md:text-lg font-black text-cyan-400">{formatCurrency(metrics.f20)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 tracking-widest uppercase">5 Years</span><span className="text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.f5)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 tracking-widest uppercase">10 Years</span><span className="text-base font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.f10)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[10px] font-black text-cyan-600 tracking-widest uppercase">20 Years</span><span className="text-lg font-black text-cyan-400">{formatCurrency(metrics.f20)}</span></div>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5 space-y-2"><div className="flex justify-between items-center text-[7px] md:text-[8px] font-bold tracking-widest uppercase text-zinc-500"><span>Progress to 10 Cr</span><span className="text-cyan-400">{((metrics.f20 / 100000000) * 100).toFixed(1)}%</span></div><div className="w-full h-1 bg-black/5 dark:bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.5)] transition-all duration-1000" style={{ width: `${Math.min(100, (metrics.f20 / 100000000) * 100)}%` }} /></div></div>
+                  <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/5 space-y-2"><div className="flex justify-between items-center text-[8px] font-bold tracking-widest uppercase text-zinc-500"><span>Progress to 10 Cr</span><span className="text-cyan-400">{((metrics.f20 / 100000000) * 100).toFixed(1)}%</span></div><div className="w-full h-1 bg-black/5 dark:bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.5)] transition-all duration-1000" style={{ width: `${Math.min(100, (metrics.f20 / 100000000) * 100)}%` }} /></div></div>
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden">
-                <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                  <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs opacity-50">Performance Comparison</h3>
-                  <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white" /> Net Deposits</div>
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-yellow-500" /> Market Value</div>
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-500" /> Benchmark</div>
-                  </div>
-                </div>
-                <div className="h-[250px] md:h-[400px] w-full">
+              <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden">
+                <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4"><h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs opacity-50">Performance Comparison</h3><div className="flex flex-wrap items-center gap-3 md:gap-4 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#ffffff]" /> Net Deposits</div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#eab308]" /> Market Value</div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#06b6d4]" /> Benchmark</div></div></div>
+                <div className="h-[300px] md:h-[400px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -25 }}>
-                      <CartesianGrid vertical={false} stroke={isDarkMode ? "#1f1f22" : "#f1f5f9"} strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} minTickGap={30} />
-                      <YAxis tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
-                      <Tooltip contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
-                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#ffffff" : "#0f172a"} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#ffffff' : '#0f172a'}} />
-                      <Line type="monotone" dataKey="Market Value" stroke="#eab308" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: '#eab308'}} />
-                      <Line type="monotone" dataKey="Benchmark Value" stroke="#06b6d4" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: '#06b6d4'}} />
+                    <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
+                      <CartesianGrid vertical={false} stroke="#1f1f22" strokeDasharray="3 3" />
+                      <XAxis dataKey="date" tick={{fill:'#71717a', fontSize:10, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} minTickGap={30} />
+                      <YAxis tick={{fill:'#71717a', fontSize:10, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={{backgroundColor:'#09090b', border:'1px solid #27272a', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,1)'}} itemStyle={{fontWeight:700, padding:'3px 0', fontSize: '11px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'8px', textTransform:'uppercase', fontSize:'9px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
+                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke="#ffffff" strokeWidth={2.5} dot={false} activeDot={{r:6, stroke:'#050505', strokeWidth:3, fill: '#ffffff'}} />
+                      <Line type="monotone" dataKey="Market Value" stroke="#eab308" strokeWidth={2.5} dot={false} activeDot={{r:6, stroke:'#050505', strokeWidth:3, fill: '#eab308'}} />
+                      <Line type="monotone" dataKey="Benchmark Value" stroke="#06b6d4" strokeWidth={2.5} dot={false} activeDot={{r:6, stroke:'#050505', strokeWidth:3, fill: '#06b6d4'}} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -1107,7 +1050,7 @@ export default function App() {
               </div>
 
               <div className="pb-10">
-
+                <GeminiInsights metrics={metrics} transactions={validTxns} prompts={validPrompts} />
               </div>
             </div>
           )}
@@ -1171,48 +1114,17 @@ export default function App() {
 
 function Sheet({ title, data, onEdit, onDelete, keys, onPaste }: any) {
   return (
-    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 flex flex-col h-[500px] md:h-[600px] overflow-hidden shadow-2xl">
-      <div className="p-3 md:p-4 border-b border-black/5 dark:border-white/5 bg-white/[0.02] flex justify-between items-center uppercase text-[9px] md:text-[10px] font-black tracking-[0.2em] text-zinc-500 shrink-0">{title}</div>
-      <div className="flex-1 overflow-auto bg-gray-100 dark:bg-black/40 scrollbar-thin scrollbar-thumb-white/10 touch-pan-x">
-        <table className="w-full text-[11px] md:text-xs text-left border-collapse min-w-[450px] md:min-w-[500px]">
-          <thead className="sticky top-0 bg-gray-50 dark:bg-[#111] z-10 shadow-sm border-b border-black/5 dark:border-white/5">
-            <tr>{['#', ...keys, ''].map(h => <th key={h} className="p-3 md:p-4 font-bold text-zinc-500 uppercase tracking-widest text-[8px] md:text-[9px] whitespace-nowrap">{h}</th>)}</tr>
-          </thead>
+    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 flex flex-col h-[600px] overflow-hidden shadow-2xl">
+      <div className="p-4 border-b border-black/5 dark:border-white/5 bg-white/[0.02] flex justify-between items-center uppercase text-[10px] font-black tracking-[0.2em] text-zinc-500 shrink-0">{title}</div>
+      <div className="flex-1 overflow-auto bg-gray-100 dark:bg-black/40 scrollbar-thin scrollbar-thumb-white/10">
+        <table className="w-full text-xs text-left border-collapse min-w-[500px]">
+          <thead className="sticky top-0 bg-gray-50 dark:bg-[#111] z-10 shadow-sm"><tr>{['#', ...keys, ''].map(h => <th key={h} className="p-4 border-b border-black/5 dark:border-white/5 font-bold text-zinc-500 uppercase tracking-widest text-[9px]">{h}</th>)}</tr></thead>
           <tbody>
             {data.map((row: any, i: number) => (
               <tr key={row.id} className="border-b border-black/5 dark:border-white/5 hover:bg-yellow-500/[0.02] group transition-colors">
-                <td className="p-3 md:p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center">{i+1}</td>
-                {keys.map((k: string) => (
-                  <td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">
-                    {k === 'content' ? (
-                      <textarea 
-                        value={row[k] || ''} 
-                        onChange={e => onEdit(row.id, k, e.target.value)} 
-                        onPaste={onPaste} 
-                        placeholder="..." 
-                        className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] text-slate-900 dark:text-white transition-colors resize-none min-h-[48px] md:min-h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
-                        rows={1} 
-                      />
-                    ) : (
-                      <input 
-                        type={k==='date'?'date': (k === 'title' ? 'text' : 'number')} 
-                        value={row[k] === undefined ? '' : row[k]} 
-                        onPaste={onPaste} 
-                        onChange={e => onEdit(row.id, k, e.target.value)} 
-                        placeholder={k==='date'?'': '0.00'} 
-                        className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] text-slate-900 dark:text-white transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
-                      />
-                    )}
-                  </td>
-                ))}
-                <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
-                  <button 
-                    onClick={() => onDelete(row.id)} 
-                    className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"
-                  >
-                    <Trash2 size={16}/>
-                  </button>
-                </td>
+                <td className="p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[10px] w-12 text-center">{i+1}</td>
+                {keys.map((k: string) => (<td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">{k === 'content' ? (<textarea value={row[k] || ''} onChange={e => onEdit(row.id, k, e.target.value)} onPaste={onPaste} placeholder="..." className="w-full p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] text-slate-900 dark:text-white transition-colors resize-none min-h-[56px] font-mono text-[11px] placeholder:text-zinc-400 dark:placeholder:text-zinc-600" rows={1} />) : (<input type={k==='date'?'date': (k === 'title' ? 'text' : 'number')} value={row[k] === undefined ? '' : row[k]} onPaste={onPaste} onChange={e => onEdit(row.id, k, e.target.value)} placeholder={k==='date'?'': '0.00'} className="w-full p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] text-slate-900 dark:text-white transition-colors font-mono text-[11px] h-14 placeholder:text-zinc-400 dark:placeholder:text-zinc-600" />)}</td>))}
+                <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-14"><button onClick={() => onDelete(row.id)} className="w-full h-full p-4 text-zinc-700 hover:text-rose-500 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"><Trash2 size={16}/></button></td>
               </tr>
             ))}
           </tbody>
