@@ -93,7 +93,7 @@ ChartJS.register(
 const appId = 'portfolio-tracker-pro';
 
 // --- Elegant Particle Network Background ---
-const InteractiveBackground = ({ isDarkMode }: { isDarkMode: boolean }) => {
+const InteractiveBackground = ({ isDarkMode, brandColor }: { isDarkMode: boolean, brandColor: string }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -121,6 +121,8 @@ const InteractiveBackground = ({ isDarkMode }: { isDarkMode: boolean }) => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('resize', handleResize);
 
+    const brandRgb = hexToRgb(brandColor).replace(/ /g, ', ');
+
     class Particle {
       x: number;
       y: number;
@@ -141,7 +143,7 @@ const InteractiveBackground = ({ isDarkMode }: { isDarkMode: boolean }) => {
         this.density = (Math.random() * 30) + 1;
         this.angle = Math.random() * 360;
         this.speed = Math.random() * 0.5 + 0.1;
-        this.color = Math.random() > 0.5 ? 'rgba(234, 179, 8, ' : 'rgba(6, 182, 212, '; 
+        this.color = Math.random() > 0.5 ? `rgba(${brandRgb}, ` : 'rgba(6, 182, 212, '; 
       }
       
       update() {
@@ -210,14 +212,16 @@ const InteractiveBackground = ({ isDarkMode }: { isDarkMode: boolean }) => {
       }
     };
 
+    let rafId: number;
     const animate = () => {
       if (!ctx) return;
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = isDarkMode ? '#050505' : '#f8fafc';
       ctx.fillRect(0, 0, width, height);
 
+      const brandRgbCanvas = hexToRgb(brandColor).replace(/ /g, ', ');
       const glow = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 300);
-      glow.addColorStop(0, isDarkMode ? 'rgba(234, 179, 8, 0.05)' : 'rgba(234, 179, 8, 0.1)'); 
+      glow.addColorStop(0, isDarkMode ? `rgba(${brandRgbCanvas}, 0.05)` : `rgba(${brandRgbCanvas}, 0.1)`); 
       glow.addColorStop(1, 'transparent');
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, height);
@@ -227,21 +231,22 @@ const InteractiveBackground = ({ isDarkMode }: { isDarkMode: boolean }) => {
         particles[i].draw();
       }
       connect();
-      requestAnimationFrame(animate);
+      rafId = requestAnimationFrame(animate);
     };
     animate();
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(rafId);
     };
-  }, [isDarkMode]);
+  }, [isDarkMode, brandColor]);
 
   return <canvas ref={canvasRef} className="fixed top-0 left-0 w-full h-full z-0 bg-slate-50 dark:bg-[#050505]" />;
 };
 
 // --- Interactive GSAP Logo ---
-const AnimatedLogo = () => {
+const AnimatedLogo = ({ brandColor }: { brandColor: string }) => {
   const [clickCount, setClickCount] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -260,9 +265,9 @@ const AnimatedLogo = () => {
       }
       const size = Math.random() * 4 + 2;
       const pts = `${cx},${cy-size} ${cx+size},${cy+size} ${cx-size},${cy+size}`;
-      return <polygon key={i} className="logo-shard" points={pts} fill={Math.random() > 0.5 ? '#eab308' : '#ca8a04'} opacity="0" />;
+      return <polygon key={i} className="logo-shard" points={pts} fill={brandColor} opacity="0" />;
     });
-  }, []);
+  }, [brandColor]);
 
   const handleClick = () => {
     if (isAnimating) return;
@@ -322,7 +327,7 @@ const AnimatedLogo = () => {
     <div 
       ref={containerRef}
       onClick={handleClick}
-      className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-white/80 dark:bg-zinc-900/80 rounded-xl border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.15)] overflow-visible shrink-0 cursor-pointer hover:scale-105 transition-transform"
+      className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-white/80 dark:bg-zinc-900/80 rounded-xl border border-brand/20 shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.15)] overflow-visible shrink-0 cursor-pointer hover:scale-105 transition-transform"
     >
       <svg viewBox="0 0 64 64" className="w-full h-full overflow-visible">
         <g>{shards}</g>
@@ -333,7 +338,7 @@ const AnimatedLogo = () => {
           fontWeight="900" 
           fontSize="44" 
           textAnchor="middle" 
-          fill="#eab308"
+          fill={brandColor}
         >
           G
         </text>
@@ -348,7 +353,7 @@ const AnimatedLogo = () => {
 };
 
 // --- UI Components ---
-const NetSavingsChart = ({ transactions, isDarkMode }: { transactions: any[], isDarkMode: boolean }) => {
+const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transactions: any[], isDarkMode: boolean, brandColor: string }) => {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
   const chartData = useMemo(() => {
@@ -370,7 +375,7 @@ const NetSavingsChart = ({ transactions, isDarkMode }: { transactions: any[], is
           {
             label: 'Net Savings',
             data: years.map(y => yearlyData[y]),
-            backgroundColor: isDarkMode ? '#eab308' : '#ca8a04',
+            backgroundColor: brandColor,
             borderRadius: 4,
           }
         ]
@@ -397,13 +402,13 @@ const NetSavingsChart = ({ transactions, isDarkMode }: { transactions: any[], is
           {
             label: `Net Savings (${selectedYear})`,
             data: months.map((_, i) => monthlyData[i]),
-            backgroundColor: isDarkMode ? '#06b6d4' : '#0891b2',
+            backgroundColor: brandColor,
             borderRadius: 4,
           }
         ]
       };
     }
-  }, [transactions, selectedYear, isDarkMode]);
+  }, [transactions, selectedYear, isDarkMode, brandColor]);
 
   const options = {
     responsive: true,
@@ -504,11 +509,11 @@ const NetSavingsChart = ({ transactions, isDarkMode }: { transactions: any[], is
   );
 };
 
-const MetricCard = ({ title, value, icon: Icon, subtext, trend, highlightColor = 'yellow' }: any) => {
-  const colorClass = highlightColor === 'cyan' ? 'text-cyan-400' : 'text-yellow-500';
-  const borderClass = highlightColor === 'cyan' ? 'hover:border-cyan-500/30' : 'hover:border-yellow-500/30';
-  const glowClass = highlightColor === 'cyan' ? 'group-hover:bg-cyan-500/10' : 'group-hover:bg-yellow-500/10';
-  const lineGlow = highlightColor === 'cyan' ? 'group-hover:bg-cyan-500/50' : 'group-hover:bg-yellow-500/50';
+const MetricCard = ({ title, value, icon: Icon, subtext, trend, highlightColor = 'brand' }: any) => {
+  const colorClass = highlightColor === 'cyan' ? 'text-cyan-400' : 'text-brand';
+  const borderClass = highlightColor === 'cyan' ? 'hover:border-cyan-500/30' : 'hover:border-brand/30';
+  const glowClass = highlightColor === 'cyan' ? 'group-hover:bg-cyan-500/10' : 'group-hover:bg-brand/10';
+  const lineGlow = highlightColor === 'cyan' ? 'group-hover:bg-cyan-500/50' : 'group-hover:bg-brand/50';
 
   return (
     <div className={`relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 ${borderClass}`}>
@@ -549,10 +554,10 @@ const PromptCard = ({ title, content }: any) => {
   };
 
   return (
-    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-5 transition-all hover:border-yellow-500/30 group">
+    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-5 transition-all hover:border-brand/30 group">
       <div className="flex justify-between items-start mb-3">
         <h4 className="text-xs font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 group-hover:text-slate-900 dark:text-white transition-colors truncate pr-2">{title || 'Untitled Prompt'}</h4>
-        <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-yellow-500 hover:bg-yellow-500/10'}`}>
+        <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
@@ -611,6 +616,31 @@ const getPriceForDate = (dateStr: string, sortedBenchData: any[]) => {
 
 
 
+
+// --- Theme Constants ---
+const PREDEFINED_THEMES = [
+  { id: 'amber', name: 'Amber', color: '#f59e0b' },
+  { id: 'indigo', name: 'Indigo', color: '#6366f1' },
+  { id: 'emerald', name: 'Emerald', color: '#10b981' },
+  { id: 'rose', name: 'Rose', color: '#f43f5e' },
+  { id: 'cyan', name: 'Cyan', color: '#06b6d4' },
+  { id: 'violet', name: 'Violet', color: '#8b5cf6' },
+];
+
+const hexToRgb = (hex: string) => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? 
+    `${parseInt(result[1], 16)} ${parseInt(result[2], 16)} ${parseInt(result[3], 16)}`
+    : '245 158 11';
+};
+
+const generateId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [promptSearch, setPromptSearch] = useState('');
@@ -620,6 +650,19 @@ export default function App() {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
   const CORRECT_PIN = '1234'; 
+
+  const [brandColor, setBrandColor] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('brandColor') || '#f59e0b';
+    }
+    return '#f59e0b';
+  });
+  const [showThemePicker, setShowThemePicker] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--brand-color-rgb', hexToRgb(brandColor));
+    localStorage.setItem('brandColor', brandColor);
+  }, [brandColor]);
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
@@ -717,21 +760,21 @@ export default function App() {
     const unsubTxns = onSnapshot(txnsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setTransactions([...sorted, { id: crypto.randomUUID(), date: '', deposit: '', withdrawal: '' }]);
+      setTransactions([...sorted, { id: generateId(), date: '', deposit: '', withdrawal: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, txnsPath.path));
     const unsubHist = onSnapshot(histPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setPortfolioHistory([...sorted, { id: crypto.randomUUID(), date: '', marketValue: '' }]);
+      setPortfolioHistory([...sorted, { id: generateId(), date: '', marketValue: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, histPath.path));
     const unsubBench = onSnapshot(benchPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setBenchmarkHistory([...sorted, { id: crypto.randomUUID(), date: '', price: '' }]);
+      setBenchmarkHistory([...sorted, { id: generateId(), date: '', price: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, benchPath.path));
     const unsubPrompts = onSnapshot(promptsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      setPrompts([...data, { id: crypto.randomUUID(), title: '', content: '' }]);
+      setPrompts([...data, { id: generateId(), title: '', content: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, promptsPath.path));
     const unsubFiles = onSnapshot(filesPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
@@ -806,7 +849,7 @@ export default function App() {
     for (const row of rows) {
       const cols = row.split('\t').map((c: string) => c.trim());
       if (cols.length >= keys.length) {
-        const id = crypto.randomUUID();
+        const id = generateId();
         const data: any = { id };
         keys.forEach((key, i) => {
           if (key === 'date') {
@@ -836,7 +879,7 @@ export default function App() {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64 = event.target?.result;
-        const id = crypto.randomUUID();
+        const id = generateId();
         await updateCloudDoc('files', id, {
           name: file.name,
           type: file.type,
@@ -939,15 +982,15 @@ export default function App() {
   if (authError) {
     return (
       <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center">
-        <InteractiveBackground isDarkMode={isDarkMode} />
+        <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
         <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-sm:mx-4 max-w-sm flex flex-col items-center shadow-2xl text-center">
-          <AnimatedLogo />
+          <AnimatedLogo brandColor={brandColor} />
           <h2 className="text-xl font-bold mt-6 mb-2 text-rose-500">Authentication Error</h2>
           <p className="text-zinc-600 dark:text-zinc-400 text-sm mb-4">{authError}</p>
           <div className="flex flex-col gap-3 w-full">
             <button 
               onClick={() => { setAuthError(null); setLoadingAuth(true); setTimeout(() => setLoadingAuth(false), 100); }} 
-              className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-white dark:text-black font-bold rounded-xl transition-all"
+              className="w-full py-3 bg-brand hover:opacity-90 text-white dark:text-black font-bold rounded-xl transition-all"
             >
               Retry
             </button>
@@ -967,9 +1010,9 @@ export default function App() {
   if (loadingAuth) {
     return (
       <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center">
-        <InteractiveBackground isDarkMode={isDarkMode} />
+        <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
         <div className="relative z-10 flex flex-col items-center">
-          <AnimatedLogo />
+          <AnimatedLogo brandColor={brandColor} />
           <div className="mt-8 text-sm font-bold text-zinc-500 animate-pulse">Authenticating...</div>
         </div>
       </div>
@@ -979,9 +1022,9 @@ export default function App() {
   if (!user) {
     return (
       <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center overflow-hidden">
-        <InteractiveBackground isDarkMode={isDarkMode} />
+        <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
         <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center shadow-2xl">
-          <AnimatedLogo />
+          <AnimatedLogo brandColor={brandColor} />
           <h2 className="text-xl font-bold mt-6 mb-2 tracking-tight">Portfolio Tracker Pro</h2>
           <p className="text-zinc-500 text-sm mb-8 text-center">Sign in to access your dashboard.</p>
           <div id="gsi-button-container" className="w-full flex justify-center min-h-[44px]"></div>
@@ -991,23 +1034,63 @@ export default function App() {
   }
 
   return (
-    <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] overflow-x-hidden selection:bg-yellow-500/30">
-      <InteractiveBackground isDarkMode={isDarkMode} />
+    <div className={`relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] overflow-x-hidden selection:bg-brand/30`}>
+      <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
       <div className="relative z-10 w-full h-full pb-20">
         <nav className="border-b border-black/5 dark:border-white/5 bg-black/50 backdrop-blur-2xl sticky top-0 z-50 h-20 flex items-center">
           <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <AnimatedLogo />
+              <AnimatedLogo brandColor={brandColor} />
 
               <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
                 <Download size={12} className="text-blue-400" />
                 <span className="text-[9px] md:text-[10px] font-bold text-blue-400 uppercase tracking-tight">Export</span>
               </button>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 md:gap-4">
+              <div className="relative">
+                <button 
+                  onClick={() => setShowThemePicker(!showThemePicker)}
+                  className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all flex items-center gap-2"
+                  title="Customize Theme"
+                >
+                  <div className="w-4 h-4 rounded-full border border-white/20 shadow-sm" style={{ backgroundColor: brandColor }} />
+                </button>
+
+                {showThemePicker && (
+                  <div className="absolute right-0 mt-3 p-4 bg-white dark:bg-[#0d0d0d] border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl z-[60] w-64 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <h4 className="text-[10px] font-black tracking-widest uppercase text-zinc-500 mb-4">Choose Primary Color</h4>
+                    <div className="grid grid-cols-4 gap-2 mb-4">
+                      {PREDEFINED_THEMES.map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => { setBrandColor(t.color); setShowThemePicker(false); }}
+                          className={`w-10 h-10 rounded-xl border-2 transition-all ${brandColor === t.color ? 'border-brand scale-110' : 'border-transparent hover:scale-105'}`}
+                          style={{ backgroundColor: t.color }}
+                          title={t.name}
+                        />
+                      ))}
+                    </div>
+                    <div className="space-y-2">
+                       <h4 className="text-[10px] font-black tracking-widest uppercase text-zinc-500">Custom Hex Code</h4>
+                       <div className="flex gap-2">
+                         <input 
+                           type="text" 
+                           value={brandColor} 
+                           onChange={(e) => setBrandColor(e.target.value)}
+                           className="flex-1 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono uppercase focus:outline-none focus:border-brand transition-all"
+                           placeholder="#000000"
+                         />
+                         <div className="w-8 h-8 rounded-lg border border-black/10 dark:border-white/10 shadow-inner" style={{ backgroundColor: brandColor }} />
+                       </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-full border border-black/10 dark:border-white/10 shrink-0">
-                <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-yellow-500 text-white dark:text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
-                <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-yellow-500 text-white dark:text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
+                <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-brand text-white dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
+                <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-brand text-white dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
               </div>
               <button 
                 onClick={handleLogout}
@@ -1034,8 +1117,8 @@ export default function App() {
                 <MetricCard title="Current Value" value={formatCurrency(metrics.currentMV)} icon={IndianRupee} subtext="Latest Snapshot" />
                 <MetricCard title="Net Deposits" value={formatCurrency(metrics.net)} icon={Wallet} subtext="Total Savings" />
                 <MetricCard title="Unrealized P/L" value={formatCurrency(metrics.pl)} icon={TrendingUp} trend={metrics.pl >= 0 ? 'up' : 'down'} subtext={metrics.pl >= 0 ? 'Profit' : 'Loss'} />
-                <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-yellow-500/30">
-                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Avg Savings</h3><Calendar className="text-yellow-500" size={18} strokeWidth={2.5} /></div>
+                <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-brand/30">
+                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Avg Savings</h3><Calendar className="text-brand" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Annual</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.avgY)}</span></div>
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Monthly</span><span className="text-sm md:text-base font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.avgM)}</span></div>
@@ -1059,7 +1142,7 @@ export default function App() {
                   <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs opacity-50">Performance Comparison</h3>
                   <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
                     <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white" /> Net Deposits</div>
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-yellow-500" /> Market Value</div>
+                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-brand" /> Market Value</div>
                     <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-500" /> Benchmark</div>
                   </div>
                 </div>
@@ -1071,18 +1154,18 @@ export default function App() {
                       <YAxis tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
                       <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#ffffff" : "#0f172a"} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#ffffff' : '#0f172a'}} />
-                      <Line type="monotone" dataKey="Market Value" stroke="#eab308" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: '#eab308'}} />
+                      <Line type="monotone" dataKey="Market Value" stroke={brandColor} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: brandColor}} />
                       <Line type="monotone" dataKey="Benchmark Value" stroke="#06b6d4" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: '#06b6d4'}} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
-              <NetSavingsChart transactions={validTxns} isDarkMode={isDarkMode} />
+              <NetSavingsChart transactions={validTxns} isDarkMode={isDarkMode} brandColor={brandColor} />
 
               <div className="space-y-6 pb-10">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-yellow-500 transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-yellow-500/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<PromptCard key={p.id} title={p.title} content={p.content} />))}</div>) : (<div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<PromptCard key={p.id} title={p.title} content={p.content} brandColor={brandColor} />))}</div>) : (<div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
               </div>
 
               <div className="space-y-6 pb-10">
@@ -1121,7 +1204,49 @@ export default function App() {
           )}
 
           {activeTab === 'data' && !isUnlocked && (
-            <div className="flex flex-col items-center justify-center min-h-[50vh] animate-in fade-in zoom-in duration-500"><div className={`bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center transition-all ${pinError ? 'animate-shake border-rose-500/50' : ''}`}><div className="w-16 h-16 bg-yellow-500/10 rounded-full flex items-center justify-center mb-6 border border-yellow-500/20"><Lock className="text-yellow-500" size={28} /></div><h2 className="text-xl font-bold mb-2 tracking-tight">Restricted Access</h2><p className="text-zinc-500 text-sm mb-8 text-center">Enter your 4-digit PIN.</p><input type="password" maxLength={4} value={pinInput} onChange={e => { const val = e.target.value.replace(/\D/g,''); setPinInput(val); if (val === CORRECT_PIN) setIsUnlocked(true); else if (val.length === 4) { setPinError(true); setTimeout(()=>setPinError(false),500); setPinInput(''); } }} className={`w-full bg-white dark:bg-black border ${pinError ? 'border-rose-500' : 'border-black/10 dark:border-white/10'} text-center text-3xl py-5 rounded-xl focus:outline-none focus:border-yellow-500 tracking-[1em] transition-all font-mono`} placeholder="••••" autoFocus /></div><style>{`@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } } .animate-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }`}</style></div>
+            <div className="flex flex-col items-center justify-center min-h-[50vh] animate-in fade-in zoom-in duration-500" role="form" aria-labelledby="pin-title">
+              <div className={`bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center transition-all ${pinError ? 'animate-shake border-rose-500/50' : ''}`}>
+                <div className="w-16 h-16 bg-brand/10 rounded-full flex items-center justify-center mb-6 border border-brand/20" aria-hidden="true">
+                  <Lock className="text-brand" size={28} />
+                </div>
+                <h2 id="pin-title" className="text-xl font-bold mb-2 tracking-tight">Restricted Access</h2>
+                <p id="pin-description" className="text-zinc-500 text-sm mb-8 text-center">Please enter your 4-digit PIN to unlock the data vault.</p>
+                <div className="w-full relative">
+                  <input 
+                    id="pin-input"
+                    type="password" 
+                    maxLength={4}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    aria-label="4-digit PIN"
+                    aria-invalid={pinError}
+                    aria-describedby={pinError ? "pin-error pin-description" : "pin-description"}
+                    aria-required="true"
+                    value={pinInput} 
+                    onChange={e => { 
+                      const val = e.target.value.replace(/\D/g,''); 
+                      setPinInput(val); 
+                      if (val === CORRECT_PIN) {
+                        setIsUnlocked(true);
+                      } else if (val.length === 4) { 
+                        setPinError(true); 
+                        setTimeout(()=>setPinError(false), 2000); 
+                        setPinInput(''); 
+                      } 
+                    }} 
+                    className={`w-full bg-white dark:bg-black border ${pinError ? 'border-rose-500' : 'border-black/10 dark:border-white/10'} text-center text-3xl py-5 rounded-xl focus:outline-none focus:border-brand tracking-[1em] transition-all font-mono`} 
+                    placeholder="••••" 
+                    autoFocus 
+                  />
+                  {pinError && (
+                    <div id="pin-error" role="alert" className="absolute -bottom-6 left-0 w-full text-center text-[10px] font-bold text-rose-500 uppercase tracking-widest animate-in fade-in slide-in-from-top-1">
+                      Incorrect PIN. Please try again.
+                    </div>
+                  )}
+                </div>
+              </div>
+              <style>{`@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } } .animate-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }`}</style>
+            </div>
           )}
 
           {activeTab === 'data' && isUnlocked && (
@@ -1142,10 +1267,10 @@ export default function App() {
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
-                    className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${isDragging ? 'border-yellow-500 bg-yellow-500/[0.05]' : 'border-black/10 dark:border-white/10 hover:bg-yellow-500/[0.02] hover:border-yellow-500/30'}`}
+                    className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${isDragging ? 'border-brand bg-brand/[0.05]' : 'border-black/10 dark:border-white/10 hover:bg-brand/[0.02] hover:border-brand/30'}`}
                   >
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <UploadCloud className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-yellow-500' : 'text-zinc-400 group-hover:text-yellow-500'}`} />
+                      <UploadCloud className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-brand' : 'text-zinc-400 group-hover:text-brand'}`} />
                       <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400"><span className="font-semibold text-slate-900 dark:text-white">Click to upload</span> or drag and drop</p>
                       <p className="text-xs text-zinc-500">PDF, JPG or JPEG (MAX. 800KB)</p>
                     </div>
@@ -1188,7 +1313,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste }: any) {
           </thead>
           <tbody>
             {data.map((row: any, i: number) => (
-              <tr key={row.id} className="border-b border-black/5 dark:border-white/5 hover:bg-yellow-500/[0.02] group transition-colors">
+              <tr key={row.id} className="border-b border-black/5 dark:border-white/5 hover:bg-brand/[0.02] group transition-colors">
                 <td className="p-3 md:p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center">{i+1}</td>
                 {keys.map((k: string) => (
                   <td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">
@@ -1198,7 +1323,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste }: any) {
                         onChange={e => onEdit(row.id, k, e.target.value)} 
                         onPaste={onPaste} 
                         placeholder="..." 
-                        className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] text-slate-900 dark:text-white transition-colors resize-none min-h-[48px] md:min-h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
+                        className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none min-h-[48px] md:min-h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
                         rows={1} 
                       />
                     ) : (
@@ -1208,7 +1333,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste }: any) {
                         onPaste={onPaste} 
                         onChange={e => onEdit(row.id, k, e.target.value)} 
                         placeholder={k==='date'?'': '0.00'} 
-                        className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-yellow-500/[0.05] text-slate-900 dark:text-white transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
+                        className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
                       />
                     )}
                   </td>
