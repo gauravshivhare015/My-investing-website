@@ -2,6 +2,9 @@
 
 @theme {
   --color-brand: rgb(var(--brand-color-rgb, 245 158 11));
+  --color-surface-light: #fafafa;
+  --color-background-light: #fdfcfb;
+  --color-muted-light: #f8f6f4;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));

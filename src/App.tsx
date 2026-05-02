@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer 
@@ -8,7 +9,8 @@ import {
   Calendar, Wallet, ArrowUpRight, ArrowDownRight,
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon,
-  UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut
+  UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
+  ChevronDown, ShieldCheck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -216,7 +218,7 @@ const InteractiveBackground = ({ isDarkMode, brandColor }: { isDarkMode: boolean
     const animate = () => {
       if (!ctx) return;
       ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = isDarkMode ? '#050505' : '#f8fafc';
+      ctx.fillStyle = isDarkMode ? '#050505' : '#fdfcfb';
       ctx.fillRect(0, 0, width, height);
 
       const brandRgbCanvas = hexToRgb(brandColor).replace(/ /g, ', ');
@@ -242,7 +244,7 @@ const InteractiveBackground = ({ isDarkMode, brandColor }: { isDarkMode: boolean
     };
   }, [isDarkMode, brandColor]);
 
-  return <canvas ref={canvasRef} className="fixed top-0 left-0 w-full h-full z-0 bg-slate-50 dark:bg-[#050505]" />;
+  return <canvas ref={canvasRef} className="fixed top-0 left-0 w-full h-full z-0 bg-background-light dark:bg-[#050505]" />;
 };
 
 // --- Interactive GSAP Logo ---
@@ -488,7 +490,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
   };
 
   return (
-    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden mt-6">
+    <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden mt-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs opacity-50">
           Net Savings {selectedYear ? `(${selectedYear})` : '(Yearly)'}
@@ -516,7 +518,7 @@ const MetricCard = ({ title, value, icon: Icon, subtext, trend, highlightColor =
   const lineGlow = highlightColor === 'cyan' ? 'group-hover:bg-cyan-500/50' : 'group-hover:bg-brand/50';
 
   return (
-    <div className={`relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 ${borderClass}`}>
+    <div className={`relative group overflow-hidden bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 ${borderClass}`}>
       <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-white/0 ${lineGlow} blur-[2px] transition-all duration-500`} />
       <div className="flex items-center justify-between mb-3 md:mb-4">
         <h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 tracking-wide uppercase">{title}</h3>
@@ -554,14 +556,14 @@ const PromptCard = ({ title, content }: any) => {
   };
 
   return (
-    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-5 transition-all hover:border-brand/30 group">
+    <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-5 transition-all hover:border-brand/30 group">
       <div className="flex justify-between items-start mb-3">
         <h4 className="text-xs font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 group-hover:text-slate-900 dark:text-white transition-colors truncate pr-2">{title || 'Untitled Prompt'}</h4>
         <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
-      <div className="bg-gray-100 dark:bg-black/40 rounded-xl p-3 border border-black/5 dark:border-white/5 max-h-32 overflow-y-auto">
+      <div className="bg-muted-light dark:bg-black/40 rounded-xl p-3 border border-black/5 dark:border-white/5 max-h-32 overflow-y-auto">
         <p className="text-xs text-zinc-500 leading-relaxed font-mono whitespace-pre-wrap">{content}</p>
       </div>
     </div>
@@ -639,6 +641,36 @@ const generateId = () => {
     return crypto.randomUUID();
   }
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
+
+const formatDateToDDMMYYYY = (dateStr: string) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) {
+    // Attempt parsing DD-MM-YYYY if it's already in that format or similar
+    const parts = dateStr.split(/[-/]/);
+    if (parts.length === 3) {
+      const [dPart, mPart, yPart] = parts;
+      if (dPart.length <= 2 && mPart.length <= 2 && yPart.length === 4) return `${dPart.padStart(2, '0')}-${mPart.padStart(2, '0')}-${yPart}`;
+    }
+    return dateStr;
+  }
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+const parseDDMMYYYYtoISO = (val: string) => {
+  if (!val) return '';
+  const parts = val.split(/[-/]/);
+  if (parts.length === 3) {
+    let [d, m, y] = parts;
+    if (d && m && y && y.length === 4) {
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+  }
+  return val;
 };
 
 export default function App() {
@@ -872,8 +904,8 @@ export default function App() {
         alert(`File ${file.name} is not a supported format. Only PDF and JPEG are allowed.`);
         continue;
       }
-      if (file.size > 800000) {
-        alert(`File ${file.name} is too large. Please upload files under 800KB.`);
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`File ${file.name} is too large. Please upload files under 5MB.`);
         continue;
       }
       const reader = new FileReader();
@@ -983,7 +1015,7 @@ export default function App() {
     return (
       <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center">
         <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
-        <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-sm:mx-4 max-w-sm flex flex-col items-center shadow-2xl text-center">
+        <div className="relative z-10 bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-sm:mx-4 max-w-sm flex flex-col items-center shadow-2xl text-center">
           <AnimatedLogo brandColor={brandColor} />
           <h2 className="text-xl font-bold mt-6 mb-2 text-rose-500">Authentication Error</h2>
           <p className="text-zinc-600 dark:text-zinc-400 text-sm mb-4">{authError}</p>
@@ -1023,7 +1055,7 @@ export default function App() {
     return (
       <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center overflow-hidden">
         <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
-        <div className="relative z-10 bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center shadow-2xl">
+        <div className="relative z-10 bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center shadow-2xl">
           <AnimatedLogo brandColor={brandColor} />
           <h2 className="text-xl font-bold mt-6 mb-2 tracking-tight">Portfolio Tracker Pro</h2>
           <p className="text-zinc-500 text-sm mb-8 text-center">Sign in to access your dashboard.</p>
@@ -1058,7 +1090,7 @@ export default function App() {
                 </button>
 
                 {showThemePicker && (
-                  <div className="absolute right-0 mt-3 p-4 bg-white dark:bg-[#0d0d0d] border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl z-[60] w-64 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="absolute right-0 mt-3 p-4 bg-surface-light dark:bg-[#0d0d0d] border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl z-[60] w-64 animate-in fade-in slide-in-from-top-2 duration-200">
                     <h4 className="text-[10px] font-black tracking-widest uppercase text-zinc-500 mb-4">Choose Primary Color</h4>
                     <div className="grid grid-cols-4 gap-2 mb-4">
                       {PREDEFINED_THEMES.map(t => (
@@ -1089,8 +1121,8 @@ export default function App() {
               </div>
 
               <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-full border border-black/10 dark:border-white/10 shrink-0">
-                <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-brand text-white dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
-                <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-brand text-white dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
+                <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-brand text-black dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
+                <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-brand text-black dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
               </div>
               <button 
                 onClick={handleLogout}
@@ -1117,7 +1149,7 @@ export default function App() {
                 <MetricCard title="Current Value" value={formatCurrency(metrics.currentMV)} icon={IndianRupee} subtext="Latest Snapshot" />
                 <MetricCard title="Net Deposits" value={formatCurrency(metrics.net)} icon={Wallet} subtext="Total Savings" />
                 <MetricCard title="Unrealized P/L" value={formatCurrency(metrics.pl)} icon={TrendingUp} trend={metrics.pl >= 0 ? 'up' : 'down'} subtext={metrics.pl >= 0 ? 'Profit' : 'Loss'} />
-                <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-brand/30">
+                <div className="relative group overflow-hidden bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-brand/30">
                   <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Avg Savings</h3><Calendar className="text-brand" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Annual</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.avgY)}</span></div>
@@ -1126,7 +1158,7 @@ export default function App() {
                   </div>
                 </div>
                 <MetricCard title="XIRR" value={formatPercent(metrics.xirr)} icon={Activity} trend={metrics.xirr >= 0 ? 'up' : 'down'} subtext={`Return vs Bench: ${formatPercent(metrics.benchCAGR)}`} />
-                <div className="relative group overflow-hidden bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-cyan-500/30">
+                <div className="relative group overflow-hidden bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-cyan-500/30">
                   <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Future Wealth</h3><Rocket className="text-cyan-400" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">5 Years</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.f5)}</span></div>
@@ -1137,7 +1169,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-4 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden">
+              <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 md:p-6 border border-black/5 dark:border-white/5 shadow-2xl overflow-hidden">
                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
                   <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs opacity-50">Performance Comparison</h3>
                   <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
@@ -1148,8 +1180,8 @@ export default function App() {
                 </div>
                 <div className="h-[250px] md:h-[400px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -25 }}>
-                      <CartesianGrid vertical={false} stroke={isDarkMode ? "#1f1f22" : "#f1f5f9"} strokeDasharray="3 3" />
+                      <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -25 }}>
+                        <CartesianGrid vertical={false} stroke={isDarkMode ? "#1f1f22" : "#e4e4e7"} strokeDasharray="3 3" />
                       <XAxis dataKey="date" tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} minTickGap={30} />
                       <YAxis tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
@@ -1165,7 +1197,7 @@ export default function App() {
 
               <div className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<PromptCard key={p.id} title={p.title} content={p.content} brandColor={brandColor} />))}</div>) : (<div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<PromptCard key={p.id} title={p.title} content={p.content} brandColor={brandColor} />))}</div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
               </div>
 
               <div className="space-y-6 pb-10">
@@ -1178,19 +1210,19 @@ export default function App() {
                 {files.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                     {files.map(f => (
-                      <a key={f.id} href={f.data} download={f.name} className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-5 border border-black/5 dark:border-white/5 shadow-lg hover:border-cyan-500/30 transition-all group flex items-center gap-4 cursor-pointer">
+                      <a key={f.id} href={f.data} download={f.name} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-black/5 dark:border-white/5 shadow-lg hover:border-cyan-500/30 transition-all group flex items-center gap-4 cursor-pointer">
                         <div className="p-3 bg-black/5 dark:bg-white/5 rounded-xl group-hover:bg-cyan-500/10 transition-colors">
                           {f.type.includes('pdf') ? <FileText size={24} className="text-rose-500"/> : <ImageIcon size={24} className="text-cyan-500"/>}
                         </div>
                         <div className="overflow-hidden">
                           <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{f.name}</h4>
-                          <p className="text-xs text-zinc-500">{(f.size / 1024).toFixed(1)} KB • {new Date(f.uploadedAt).toLocaleDateString()}</p>
+                          <p className="text-xs text-zinc-500">{(f.size / 1024).toFixed(1)} KB • {formatDateToDDMMYYYY(f.uploadedAt)}</p>
                         </div>
                       </a>
                     ))}
                   </div>
                 ) : (
-                  <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center">
+                  <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center">
                     <File size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" />
                     <p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">No documents uploaded yet.</p>
                   </div>
@@ -1205,7 +1237,7 @@ export default function App() {
 
           {activeTab === 'data' && !isUnlocked && (
             <div className="flex flex-col items-center justify-center min-h-[50vh] animate-in fade-in zoom-in duration-500" role="form" aria-labelledby="pin-title">
-              <div className={`bg-white dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center transition-all ${pinError ? 'animate-shake border-rose-500/50' : ''}`}>
+              <div className={`bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center transition-all ${pinError ? 'animate-shake border-rose-500/50' : ''}`}>
                 <div className="w-16 h-16 bg-brand/10 rounded-full flex items-center justify-center mb-6 border border-brand/20" aria-hidden="true">
                   <Lock className="text-brand" size={28} />
                 </div>
@@ -1251,15 +1283,15 @@ export default function App() {
 
           {activeTab === 'data' && isUnlocked && (
             <div className="space-y-6 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8">
-                <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={(id: string) => deleteCloudDoc('transactions', id)} keys={['date','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','deposit','withdrawal'])} />
-                <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={(id: string) => deleteCloudDoc('history', id)} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} />
-                <Sheet title="Benchmark Sim" coll="benchmark" data={benchmarkHistory} onEdit={handleBmChange} onDelete={(id: string) => deleteCloudDoc('benchmark', id)} keys={['date','price']} onPaste={(e: any) => handlePaste(e,'benchmark',['date','price'])} />
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8 items-start">
+                <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={(id: string) => deleteCloudDoc('transactions', id)} keys={['date','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
+                <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={(id: string) => deleteCloudDoc('history', id)} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
+                <Sheet title="Benchmark Sim" coll="benchmark" data={benchmarkHistory} onEdit={handleBmChange} onDelete={(id: string) => deleteCloudDoc('benchmark', id)} keys={['date','price']} onPaste={(e: any) => handlePaste(e,'benchmark',['date','price'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
               </div>
-              <div className="border-t border-black/5 dark:border-white/5 pt-6 md:pt-10"><Sheet title="Prompts Repository" coll="prompts" data={prompts} onEdit={handlePromptChange} onDelete={(id: string) => deleteCloudDoc('prompts', id)} keys={['title','content']} onPaste={(e: any) => handlePaste(e,'prompts',['title','content'])} /></div>
+              <div className="border-t border-black/5 dark:border-white/5 pt-6 md:pt-10"><Sheet title="Prompts Repository" coll="prompts" data={prompts} onEdit={handlePromptChange} onDelete={(id: string) => deleteCloudDoc('prompts', id)} keys={['title','content']} onPaste={(e: any) => handlePaste(e,'prompts',['title','content'])} brandColor={brandColor} correctPin={CORRECT_PIN} /></div>
               
               <div className="border-t border-black/5 dark:border-white/5 pt-6 md:pt-10">
-                <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-6 shadow-2xl">
+                <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-6 shadow-2xl">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-[10px] font-black tracking-[0.2em] text-zinc-500 uppercase">Document Upload</h3>
                   </div>
@@ -1272,7 +1304,7 @@ export default function App() {
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                       <UploadCloud className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-brand' : 'text-zinc-400 group-hover:text-brand'}`} />
                       <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400"><span className="font-semibold text-slate-900 dark:text-white">Click to upload</span> or drag and drop</p>
-                      <p className="text-xs text-zinc-500">PDF, JPG or JPEG (MAX. 800KB)</p>
+                      <p className="text-xs text-zinc-500">PDF, JPG or JPEG (MAX. 5MB)</p>
                     </div>
                     <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg" multiple onChange={handleFileUpload} />
                   </label>
@@ -1302,42 +1334,181 @@ export default function App() {
   );
 }
 
-function Sheet({ title, data, onEdit, onDelete, keys, onPaste }: any) {
+function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, correctPin }: any) {
+  const [isLocked, setIsLocked] = useState(true);
+  const [showPinInput, setShowPinInput] = useState(false);
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleUnlock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin === correctPin) {
+      setIsLocked(false);
+      setShowPinInput(false);
+      setPin('');
+      setError(false);
+      setShowDropdown(false);
+    } else {
+      setError(true);
+      setPin('');
+      setTimeout(() => setError(false), 500);
+    }
+  };
+
+  const handleLock = () => {
+    setIsLocked(true);
+    setShowDropdown(false);
+  };
+
+  const savedItems = data.filter((row: any) => !!row.id && (row.date || row.title || row.content));
+  const activeItems = data.filter((row: any) => !(!!row.id && (row.date || row.title || row.content)));
+
   return (
-    <div className="bg-white dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 flex flex-col h-[500px] md:h-[600px] overflow-hidden shadow-2xl">
-      <div className="p-3 md:p-4 border-b border-black/5 dark:border-white/5 bg-white/[0.02] flex justify-between items-center uppercase text-[9px] md:text-[10px] font-black tracking-[0.2em] text-zinc-500 shrink-0">{title}</div>
-      <div className="flex-1 overflow-auto bg-gray-100 dark:bg-black/40 scrollbar-thin scrollbar-thumb-white/10 touch-pan-x">
+    <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 flex flex-col shadow-2xl relative transition-all duration-300">
+      <div className="p-3 md:p-4 border-b border-black/5 dark:border-white/5 bg-muted-light/20 flex justify-between items-center uppercase text-[9px] md:text-[10px] font-black tracking-[0.2em] text-zinc-500 shrink-0">
+        <div className="flex items-center gap-2">
+          {title}
+          {isLocked && <Lock size={12} className="text-zinc-500/50" />}
+        </div>
+        
+        <div className="relative" ref={dropdownRef}>
+          <button 
+            onClick={() => setShowDropdown(!showDropdown)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${isLocked ? 'bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-zinc-500' : 'bg-brand/10 border-brand/20 text-brand'}`}
+          >
+            <span className="text-[8px] font-bold tracking-widest">{isLocked ? 'READ-ONLY' : 'EDIT MODE'}</span>
+            <ChevronDown size={10} className={`transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showDropdown && (
+            <div className="absolute right-0 mt-2 w-48 bg-surface-light dark:bg-[#111] border border-black/10 dark:border-white/10 rounded-xl shadow-2xl z-20 animate-in fade-in zoom-in-95 duration-150">
+              <div className="p-2 space-y-1">
+                <button 
+                  onClick={handleLock}
+                  disabled={isLocked}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between transition-colors ${isLocked ? 'text-brand bg-brand/5' : 'text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                >
+                  LOCK RECORDS {isLocked && <Check size={12} />}
+                </button>
+                <button 
+                  onClick={() => { if(isLocked) setShowPinInput(true); setShowDropdown(false); }}
+                  disabled={!isLocked}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between transition-colors ${!isLocked ? 'text-brand bg-brand/5' : 'text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                >
+                  UNLOCK TO MODIFY {!isLocked && <ShieldCheck size={12} />}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showPinInput && (
+        <div className="absolute inset-0 z-30 bg-surface-light/90 dark:bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <form onSubmit={handleUnlock} className={`bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-xs flex flex-col items-center transition-all ${error ? 'animate-shake border-rose-500/50' : 'shadow-2xl'}`}>
+            <div className="w-12 h-12 bg-brand/10 rounded-full flex items-center justify-center mb-4 border border-brand/20">
+              <Lock className="text-brand" size={20} />
+            </div>
+            <h4 className="text-sm font-bold mb-1 tracking-tight">Sheet Locked</h4>
+            <p className="text-[10px] text-zinc-500 mb-6 text-center">Verify PIN to enable modifications.</p>
+            <input 
+              type="password" 
+              maxLength={4}
+              autoFocus
+              value={pin}
+              onChange={e => setPin(e.target.value.replace(/\D/g,''))}
+              placeholder="••••"
+              className={`w-full bg-surface-light dark:bg-black border ${error ? 'border-rose-500' : 'border-black/10 dark:border-white/10'} text-center text-2xl py-4 rounded-xl focus:outline-none focus:border-brand tracking-[0.5em] transition-all font-mono mb-4`}
+            />
+            <div className="flex gap-2 w-full">
+              <button type="button" onClick={() => setShowPinInput(false)} className="flex-1 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors text-center">Cancel</button>
+              <button type="submit" className="flex-1 py-2 text-[10px] font-bold uppercase tracking-widest bg-brand text-white dark:text-black rounded-lg transition-all hover:opacity-90">Verify</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="overflow-x-auto bg-muted-light dark:bg-black/40 scrollbar-thin scrollbar-thumb-white/10 touch-pan-x">
         <table className="w-full text-[11px] md:text-xs text-left border-collapse min-w-[450px] md:min-w-[500px]">
-          <thead className="sticky top-0 bg-gray-50 dark:bg-[#111] z-10 shadow-sm border-b border-black/5 dark:border-white/5">
-            <tr>{['#', ...keys, ''].map(h => <th key={h} className="p-3 md:p-4 font-bold text-zinc-500 uppercase tracking-widest text-[8px] md:text-[9px] whitespace-nowrap">{h}</th>)}</tr>
+          <thead className="sticky top-0 bg-background-light dark:bg-[#111] z-10 shadow-sm border-b border-black/5 dark:border-white/5">
+            <tr className="divide-x divide-black/5 dark:divide-white/5 uppercase text-[8px] md:text-[9px] font-black tracking-widest text-zinc-400">
+              <th className="p-3 md:p-4 w-10 md:w-12 text-center">#</th>
+              {keys.map((k: string) => {
+                let colorClass = "";
+                if (k === 'deposit') colorClass = "text-emerald-500 bg-emerald-500/5";
+                else if (k === 'withdrawal') colorClass = "text-rose-500 bg-rose-500/5";
+                else if (k === 'marketValue' || k === 'price') colorClass = "text-brand bg-brand/5";
+                
+                return <th key={k} className={`p-3 md:p-4 ${colorClass}`}>{k}</th>;
+              })}
+              <th className="p-3 md:p-4 w-12 md:w-14"></th>
+            </tr>
           </thead>
           <tbody>
-            {data.map((row: any, i: number) => (
-              <tr key={row.id} className="border-b border-black/5 dark:border-white/5 hover:bg-brand/[0.02] group transition-colors">
+            {activeItems.map((row: any, i: number) => (
+              <tr key={row.id} className="border-b border-black/5 dark:border-white/5 group transition-colors hover:bg-brand/[0.02]">
                 <td className="p-3 md:p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center">{i+1}</td>
-                {keys.map((k: string) => (
-                  <td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">
-                    {k === 'content' ? (
-                      <textarea 
-                        value={row[k] || ''} 
-                        onChange={e => onEdit(row.id, k, e.target.value)} 
-                        onPaste={onPaste} 
-                        placeholder="..." 
-                        className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none min-h-[48px] md:min-h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
-                        rows={1} 
-                      />
-                    ) : (
-                      <input 
-                        type={k==='date'?'date': (k === 'title' ? 'text' : 'number')} 
-                        value={row[k] === undefined ? '' : row[k]} 
-                        onPaste={onPaste} 
-                        onChange={e => onEdit(row.id, k, e.target.value)} 
-                        placeholder={k==='date'?'': '0.00'} 
-                        className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
-                      />
-                    )}
-                  </td>
-                ))}
+                {keys.map((k: string) => {
+                  let textColor = "text-slate-900 dark:text-white";
+                  let focusColor = "focus:bg-brand/[0.05]";
+                  
+                  if (k === 'deposit') {
+                    textColor = "text-emerald-600 dark:text-emerald-400";
+                    focusColor = "focus:bg-emerald-500/10";
+                  } else if (k === 'withdrawal') {
+                    textColor = "text-rose-600 dark:text-rose-400";
+                    focusColor = "focus:bg-rose-500/10";
+                  } else if (k === 'marketValue' || k === 'price') {
+                    textColor = "text-brand";
+                    focusColor = "focus:bg-brand/10";
+                  }
+
+                  return (
+                    <td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">
+                      {k === 'date' ? (
+                        <input 
+                          type="text"
+                          value={formatDateToDDMMYYYY(row[k])} 
+                          placeholder="DD-MM-YYYY"
+                          onPaste={onPaste} 
+                          onChange={e => onEdit(row.id, k, parseDDMMYYYYtoISO(e.target.value))} 
+                          className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
+                        />
+                      ) : k === 'content' ? (
+                        <textarea 
+                          value={row[k] || ''} 
+                          onChange={e => onEdit(row.id, k, e.target.value)} 
+                          onPaste={onPaste} 
+                          placeholder="..." 
+                          className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none min-h-[48px] md:min-h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
+                          rows={1} 
+                        />
+                      ) : (
+                        <input 
+                          type={k === 'title' ? 'text' : 'number'} 
+                          value={row[k] === undefined ? '' : row[k]} 
+                          onPaste={onPaste} 
+                          onChange={e => onEdit(row.id, k, e.target.value)} 
+                          placeholder="0.00" 
+                          className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
+                        />
+                      )}
+                    </td>
+                  );
+                })}
                 <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
                   <button 
                     onClick={() => onDelete(row.id)} 
@@ -1350,6 +1521,102 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste }: any) {
             ))}
           </tbody>
         </table>
+
+        {savedItems.length > 0 && (
+          <div className="mt-2 border-t border-black/5 dark:border-white/5">
+            <button 
+              onClick={() => setIsHistoryOpen(!isHistoryOpen)} 
+              className={`w-full p-4 flex items-center justify-between group transition-all ${isHistoryOpen ? 'bg-black/5 dark:bg-white/[0.03]' : 'bg-transparent hover:bg-black/5 dark:hover:bg-white/[0.02]'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-md bg-brand/10 text-brand">
+                  <Database size={14} />
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Historical Records ({savedItems.length})</span>
+              </div>
+              <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-300 ${isHistoryOpen ? 'rotate-180' : ''}`} />
+            </button>
+            
+            <AnimatePresence>
+              {isHistoryOpen && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="overflow-hidden bg-black/[0.02] dark:bg-white/[0.01]"
+                >
+                  <table className="w-full text-left border-collapse min-w-[450px] md:min-w-[500px]">
+                    <tbody>
+                      {savedItems.map((row: any, i: number) => {
+                        const isReadOnly = isLocked;
+                        return (
+                          <tr key={row.id} className={`border-b border-black/5 dark:border-white/5 group transition-colors ${isReadOnly ? 'opacity-80' : 'hover:bg-brand/[0.02]'}`}>
+                            <td className="p-3 md:p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center">{i+1}</td>
+                            {keys.map((k: string) => {
+                              let textColor = "text-slate-700 dark:text-zinc-400";
+                              if (k === 'deposit') textColor = "text-emerald-600 dark:text-emerald-400";
+                              else if (k === 'withdrawal') textColor = "text-rose-600 dark:text-rose-400";
+                              else if (k === 'marketValue' || k === 'price') textColor = "text-brand";
+
+                              return (
+                                <td key={k} className="p-3 md:p-4 border-l border-black/5 dark:border-white/5">
+                                  {isReadOnly ? (
+                                    <div className={`${textColor} font-mono text-[10px] md:text-[11px] select-none italic truncate max-w-[200px]`}>
+                                      {k === 'date' ? formatDateToDDMMYYYY(row[k]) : (row[k] || '—')}
+                                    </div>
+                                  ) : (
+                                    k === 'date' ? (
+                                      <input 
+                                        type="text" 
+                                        value={formatDateToDDMMYYYY(row[k])} 
+                                        onChange={e => onEdit(row.id, k, parseDDMMYYYYtoISO(e.target.value))} 
+                                        placeholder="DD-MM-YYYY"
+                                        className={`w-full bg-transparent outline-none focus:bg-brand/[0.05] ${textColor} transition-colors font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600`} 
+                                      />
+                                    ) : k === 'content' ? (
+                                      <textarea 
+                                        value={row[k] || ''} 
+                                        onChange={e => onEdit(row.id, k, e.target.value)} 
+                                        className="w-full bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600" 
+                                        rows={1} 
+                                      />
+                                    ) : (
+                                      <input 
+                                        type={k === 'title' ? 'text' : 'number'} 
+                                        value={row[k] === undefined ? '' : row[k]} 
+                                        onChange={e => onEdit(row.id, k, e.target.value)} 
+                                        className={`w-full bg-transparent outline-none focus:bg-brand/[0.05] ${textColor} transition-colors font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600`} 
+                                      />
+                                    )
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
+                              {!isReadOnly ? (
+                                <button 
+                                  onClick={() => onDelete(row.id)} 
+                                  className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all flex items-center justify-center"
+                                >
+                                  <Trash2 size={16}/>
+                                </button>
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-zinc-500/20">
+                                  <Lock size={12}/>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </div>
   );
