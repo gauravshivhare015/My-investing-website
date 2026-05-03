@@ -387,9 +387,8 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
       });
       
       const years = Object.keys(yearlyData).map(Number).sort();
-      // Ensure current year is shown if there's data or we want to show projection
       if (!years.includes(currentYear) && projectedRemainder > 0) years.push(currentYear);
-      years.sort((a,b) => a - b);
+      years.sort((a, b) => a - b);
 
       return {
         labels: years.map(String),
@@ -397,7 +396,13 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
           {
             label: 'Actual Net Savings',
             data: years.map(y => yearlyData[y] || 0),
-            backgroundColor: brandColor,
+            backgroundColor: (context: any) => {
+              const ctx = context.chart.ctx;
+              const gradient = ctx.createLinearGradient(0, context.chart.chartArea ? context.chart.chartArea.top : 0, 0, context.chart.chartArea ? context.chart.chartArea.bottom : 400);
+              gradient.addColorStop(0, brandColor);
+              gradient.addColorStop(1, brandColor + '44');
+              return gradient;
+            },
             borderRadius: years.map(y => 
               y === currentYear && projectedRemainder > 0 
                 ? { topLeft: 0, topRight: 0, bottomLeft: 4, bottomRight: 4 } 
@@ -408,7 +413,13 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
           {
             label: 'Projected Remainder',
             data: years.map(y => y === currentYear ? projectedRemainder : 0),
-            backgroundColor: brandColor + '33', // Ghost effect (20% opacity)
+            backgroundColor: (context: any) => {
+              const ctx = context.chart.ctx;
+              const gradient = ctx.createLinearGradient(0, context.chart.chartArea ? context.chart.chartArea.top : 0, 0, context.chart.chartArea ? context.chart.chartArea.bottom : 400);
+              gradient.addColorStop(0, brandColor + '88');
+              gradient.addColorStop(1, brandColor + '11');
+              return gradient;
+            },
             borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
             stack: 'combined',
             borderWidth: 1,
@@ -439,7 +450,13 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
           {
             label: `Net Savings (${selectedYear})`,
             data: months.map((_, i) => monthlyData[i]),
-            backgroundColor: brandColor,
+            backgroundColor: (context: any) => {
+              const ctx = context.chart.ctx;
+              const gradient = ctx.createLinearGradient(0, context.chart.chartArea ? context.chart.chartArea.top : 0, 0, context.chart.chartArea ? context.chart.chartArea.bottom : 400);
+              gradient.addColorStop(0, brandColor);
+              gradient.addColorStop(1, brandColor + '33');
+              return gradient;
+            },
             borderRadius: 4,
           }
         ]
@@ -466,21 +483,39 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
         display: false,
       },
       tooltip: {
-        backgroundColor: isDarkMode ? '#09090b' : '#ffffff',
-        titleColor: isDarkMode ? '#71717a' : '#52525b',
-        bodyColor: isDarkMode ? '#ffffff' : '#09090b',
-        borderColor: isDarkMode ? '#27272a' : '#e4e4e7',
+        enabled: true,
+        backgroundColor: isDarkMode ? 'rgba(9, 9, 11, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+        titleColor: isDarkMode ? '#ffffff' : '#09090b',
+        bodyColor: isDarkMode ? '#a1a1aa' : '#52525b',
+        borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
         borderWidth: 1,
-        padding: 10,
+        padding: 14,
+        cornerRadius: 16,
         displayColors: true,
+        usePointStyle: true,
+        boxPadding: 8,
+        titleFont: {
+          size: 11,
+          weight: 700 as const,
+        },
+        bodyFont: {
+          size: 12,
+          weight: 600 as const,
+        },
         filter: function(tooltipItem: any) {
           return tooltipItem.raw !== 0 || tooltipItem.dataset.label !== 'Projected Remainder';
         },
         callbacks: {
+          title: (items: any[]) => {
+            return `📅 ${items[0].label}`;
+          },
           label: function(context: any) {
             let label = context.dataset.label || '';
+            const isActual = label === 'Actual Net Savings';
+            const icon = isActual ? '💰 ' : '🔮 ';
+            
             if (label) {
-              label += ': ';
+              label = icon + label + ': ';
             }
             if (context.parsed.y !== null) {
               label += new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(context.parsed.y);
@@ -488,14 +523,17 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
             return label;
           },
           footer: function(tooltipItems: any[]) {
-            let sum = 0;
-            tooltipItems.forEach(function(tooltipItem: any) {
-              sum += tooltipItem.parsed.y;
-            });
             if (tooltipItems.length > 1) {
-              return 'Total: ' + new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(sum);
+              let sum = 0;
+              tooltipItems.forEach(function(tooltipItem: any) {
+                sum += tooltipItem.parsed.y;
+              });
+              return '\n📈 TOTAL YEAR END: ' + new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(sum);
             }
             return '';
+          },
+          labelTextColor: function() {
+            return isDarkMode ? '#ffffff' : '#09090b';
           }
         }
       }
