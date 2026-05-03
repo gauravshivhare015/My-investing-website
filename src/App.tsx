@@ -10,7 +10,7 @@ import {
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ShieldCheck
+  ChevronDown, ShieldCheck, GripVertical
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -674,7 +674,7 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
   );
 };
 
-const PromptCard = ({ id, title, content, onUse }: any) => {
+const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, onDrop }: any) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     const textArea = document.createElement("textarea");
@@ -684,16 +684,24 @@ const PromptCard = ({ id, title, content, onUse }: any) => {
     try {
       document.execCommand('copy');
       setCopied(true);
-      if (onUse) onUse(id);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) { console.error('Copy failed', err); }
     document.body.removeChild(textArea);
   };
 
   return (
-    <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-5 transition-all hover:border-brand/30 group">
+    <div 
+      draggable
+      onDragStart={(e) => onDragStart(e, id)}
+      onDragOver={(e) => onDragOver(e, id)}
+      onDrop={(e) => onDrop(e, id)}
+      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-5 transition-all hover:border-brand/30 group cursor-grab active:cursor-grabbing`}
+    >
       <div className="flex justify-between items-start mb-3">
-        <h4 className="text-xs font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 group-hover:text-slate-900 dark:text-white transition-colors truncate pr-2">{title || 'Untitled Prompt'}</h4>
+        <div className="flex items-center gap-2 max-w-[80%]">
+          <div className="text-zinc-400 dark:text-zinc-600 cursor-grab active:cursor-grabbing"><GripVertical size={14} /></div>
+          <h4 className="text-xs font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 group-hover:text-slate-900 dark:text-white transition-colors truncate">{title || 'Untitled Prompt'}</h4>
+        </div>
         <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
@@ -981,13 +989,49 @@ export default function App() {
     if (updated.title && updated.content) updateCloudDoc('prompts', id, updated);
   };
 
-  const handlePromptUse = (id: string) => {
-    const row = prompts.find(p => p.id === id);
-    if (!row) return;
-    const currentUsage = row.usageCount || 0;
-    const updated = { ...row, usageCount: currentUsage + 1, lastUsedAt: Date.now() };
-    setPrompts(prev => prev.map(p => p.id === id ? updated : p));
-    updateCloudDoc('prompts', id, updated);
+  const [draggedPromptId, setDraggedPromptId] = useState<string | null>(null);
+
+  const handlePromptDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+    setDraggedPromptId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handlePromptDragOver = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+    e.preventDefault();
+  };
+
+  const handlePromptDrop = (e: React.DragEvent<HTMLDivElement>, targetId: string) => {
+    e.preventDefault();
+    if (!draggedPromptId || draggedPromptId === targetId) {
+      setDraggedPromptId(null);
+      return;
+    }
+
+    const currentValidPrompts = [...validPrompts];
+    const draggedIndex = currentValidPrompts.findIndex(p => p.id === draggedPromptId);
+    const targetIndex = currentValidPrompts.findIndex(p => p.id === targetId);
+
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      const newValidPrompts = [...currentValidPrompts];
+      const [draggedItem] = newValidPrompts.splice(draggedIndex, 1);
+      newValidPrompts.splice(targetIndex, 0, draggedItem);
+      
+      setPrompts(prev => {
+        const copy = [...prev];
+        newValidPrompts.forEach((p, idx) => {
+          const mainIdx = copy.findIndex(m => m.id === p.id);
+          if (mainIdx > -1) {
+            copy[mainIdx] = { ...copy[mainIdx], order: idx };
+          }
+        });
+        return copy;
+      });
+
+      newValidPrompts.forEach((p, idx) => {
+        updateCloudDoc('prompts', p.id, { title: p.title, content: p.content, order: idx });
+      });
+    }
+    setDraggedPromptId(null);
   };
 
   const handlePaste = async (e: any, collName: string, keys: string[]) => {
@@ -1062,12 +1106,9 @@ export default function App() {
     return prompts
       .filter(p => p.title && p.content)
       .sort((a, b) => {
-        const usageA = a.usageCount || 0;
-        const usageB = b.usageCount || 0;
-        if (usageB !== usageA) return usageB - usageA;
-        const timeA = a.lastUsedAt || 0;
-        const timeB = b.lastUsedAt || 0;
-        if (timeB !== timeA) return timeB - timeA;
+        const orderA = a.order ?? 9999;
+        const orderB = b.order ?? 9999;
+        if (orderA !== orderB) return orderA - orderB;
         return a.title.localeCompare(b.title);
       });
   }, [prompts]);
@@ -1352,7 +1393,7 @@ export default function App() {
 
               <div className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id}><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} onUse={handlePromptUse} /></motion.div>))}</div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id}><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} /></motion.div>))}</div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
               </div>
 
               <div className="space-y-6 pb-10">

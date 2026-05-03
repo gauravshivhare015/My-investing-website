@@ -39,8 +39,7 @@
         "id": { "type": "string" },
         "title": { "type": "string" },
         "content": { "type": "string" },
-        "usageCount": { "type": "number", "description": "Number of times this prompt was used" },
-        "lastUsedAt": { "type": "number", "description": "Timestamp of last use" }
+        "order": { "type": "number", "description": "Sorting order of the prompt" }
       }
     },
     "File": {
