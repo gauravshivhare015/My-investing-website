@@ -359,6 +359,22 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
   const chartData = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    const validTxns = transactions.filter(t => t.date);
+    let projectedRemainder = 0;
+    if (validTxns.length > 0) {
+      const inceptionDate = new Date(Math.min(...validTxns.map(t => new Date(t.date).getTime())));
+      const daysSinceInception = Math.max(1, (now.getTime() - inceptionDate.getTime()) / (1000 * 60 * 60 * 24));
+      const totalNetSavings = validTxns.reduce((acc, t) => acc + ((Number(t.deposit) || 0) - (Number(t.withdrawal) || 0)), 0);
+      const dailyAvg = totalNetSavings / daysSinceInception;
+      
+      const endOfYear = new Date(currentYear, 11, 31);
+      const daysRemaining = Math.max(0, (endOfYear.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      projectedRemainder = dailyAvg * daysRemaining;
+    }
+
     if (selectedYear === null) {
       // Yearly view
       const yearlyData: Record<number, number> = {};
@@ -371,14 +387,33 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
       });
       
       const years = Object.keys(yearlyData).map(Number).sort();
+      // Ensure current year is shown if there's data or we want to show projection
+      if (!years.includes(currentYear) && projectedRemainder > 0) years.push(currentYear);
+      years.sort((a,b) => a - b);
+
       return {
         labels: years.map(String),
         datasets: [
           {
-            label: 'Net Savings',
-            data: years.map(y => yearlyData[y]),
+            label: 'Actual Net Savings',
+            data: years.map(y => yearlyData[y] || 0),
             backgroundColor: brandColor,
-            borderRadius: 4,
+            borderRadius: years.map(y => 
+              y === currentYear && projectedRemainder > 0 
+                ? { topLeft: 0, topRight: 0, bottomLeft: 4, bottomRight: 4 } 
+                : 4
+            ),
+            stack: 'combined',
+          },
+          {
+            label: 'Projected Remainder',
+            data: years.map(y => y === currentYear ? projectedRemainder : 0),
+            backgroundColor: brandColor + '33', // Ghost effect (20% opacity)
+            borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
+            stack: 'combined',
+            borderWidth: 1,
+            borderColor: brandColor,
+            borderDash: [5, 5],
           }
         ]
       };
@@ -410,16 +445,20 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
         ]
       };
     }
-  }, [transactions, selectedYear, isDarkMode, brandColor]);
+  }, [transactions, selectedYear, brandColor]);
 
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      mode: 'index' as const,
+      intersect: false,
+    },
     onClick: (event: any, elements: any[]) => {
       if (elements.length > 0 && selectedYear === null) {
         const index = elements[0].index;
         const year = Number(chartData.labels[index]);
-        setSelectedYear(year);
+        if (!isNaN(year)) setSelectedYear(year);
       }
     },
     plugins: {
@@ -433,7 +472,10 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
         borderColor: isDarkMode ? '#27272a' : '#e4e4e7',
         borderWidth: 1,
         padding: 10,
-        displayColors: false,
+        displayColors: true,
+        filter: function(tooltipItem: any) {
+          return tooltipItem.raw !== 0 || tooltipItem.dataset.label !== 'Projected Remainder';
+        },
         callbacks: {
           label: function(context: any) {
             let label = context.dataset.label || '';
@@ -444,6 +486,16 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
               label += new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(context.parsed.y);
             }
             return label;
+          },
+          footer: function(tooltipItems: any[]) {
+            let sum = 0;
+            tooltipItems.forEach(function(tooltipItem: any) {
+              sum += tooltipItem.parsed.y;
+            });
+            if (tooltipItems.length > 1) {
+              return 'Total: ' + new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(sum);
+            }
+            return '';
           }
         }
       }
@@ -453,6 +505,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
         grid: {
           display: false,
         },
+        stacked: true,
         ticks: {
           color: '#71717a',
           font: {
@@ -469,6 +522,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
           color: isDarkMode ? '#1f1f22' : '#e4e4e7',
           drawBorder: false,
         },
+        stacked: true,
         ticks: {
           color: '#71717a',
           font: {
@@ -984,6 +1038,15 @@ export default function App() {
       }
     }
 
+    const now = new Date();
+    const endOfYear = new Date(now.getFullYear(), 11, 31);
+    const daysRemaining = Math.max(0, (endOfYear.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const actualYearToDate = validTxns
+      .filter(t => new Date(t.date).getFullYear() === now.getFullYear())
+      .reduce((acc, t) => acc + ((Number(t.deposit) || 0) - (Number(t.withdrawal) || 0)), 0);
+    const projectedRemainder = (avgY / 365.25) * daysRemaining;
+    const projectedYearEnd = actualYearToDate + projectedRemainder;
+
     return { 
       currentMV: curMV, 
       net, 
@@ -994,6 +1057,8 @@ export default function App() {
       xirr, 
       rate, 
       benchCAGR,
+      projectedYearEnd,
+      fEoY: curMV * Math.pow(1 + rate, daysRemaining / 365.25) + projectedRemainder,
       f5: curMV*Math.pow(1+rate,5) + avgY*((Math.pow(1+rate,5)-1)/rate), 
       f10: curMV*Math.pow(1+rate,10) + avgY*((Math.pow(1+rate,10)-1)/rate), 
       f20: curMV*Math.pow(1+rate,20) + avgY*((Math.pow(1+rate,20)-1)/rate) 
@@ -1146,22 +1211,28 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                <MetricCard title="Current Value" value={formatCurrency(metrics.currentMV)} icon={IndianRupee} subtext="Latest Snapshot" />
-                <MetricCard title="Net Deposits" value={formatCurrency(metrics.net)} icon={Wallet} subtext="Total Savings" />
-                <MetricCard title="Unrealized P/L" value={formatCurrency(metrics.pl)} icon={TrendingUp} trend={metrics.pl >= 0 ? 'up' : 'down'} subtext={metrics.pl >= 0 ? 'Profit' : 'Loss'} />
+                <MetricCard title="Current Value" value={formatCurrency(metrics.currentMV)} icon={IndianRupee} />
+                <MetricCard title="Net Deposits" value={formatCurrency(metrics.net)} icon={Wallet} />
+                <MetricCard 
+                  title="Unrealized P/L" 
+                  value={formatCurrency(metrics.pl)} 
+                  icon={TrendingUp} 
+                  trend={metrics.pl >= 0 ? 'up' : 'down'} 
+                  subtext={`${metrics.pl >= 0 ? 'Profit' : 'Loss'} • XIRR: ${formatPercent(metrics.xirr)}`} 
+                />
                 <div className="relative group overflow-hidden bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-brand/30">
                   <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Avg Savings</h3><Calendar className="text-brand" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Annual</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.avgY)}</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Monthly</span><span className="text-sm md:text-base font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.avgM)}</span></div>
+                    <div className="flex justify-between items-baseline pt-1 border-t border-black/5 dark:border-white/5"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Monthly</span><span className="text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.avgM)}</span></div>
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Daily</span><span className="text-[11px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400">{formatCurrency(metrics.avgD)}</span></div>
                   </div>
                 </div>
-                <MetricCard title="XIRR" value={formatPercent(metrics.xirr)} icon={Activity} trend={metrics.xirr >= 0 ? 'up' : 'down'} subtext={`Return vs Bench: ${formatPercent(metrics.benchCAGR)}`} />
                 <div className="relative group overflow-hidden bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 sm:p-5 md:p-6 border border-black/5 dark:border-white/5 transition-all duration-500 hover:border-cyan-500/30">
                   <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Future Wealth</h3><Rocket className="text-cyan-400" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">5 Years</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.f5)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">End of Year</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.fEoY)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">5 Years</span><span className="text-sm md:text-base font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.f5)}</span></div>
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">10 Years</span><span className="text-sm md:text-base font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.f10)}</span></div>
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-black text-cyan-600 tracking-widest uppercase">20 Years</span><span className="text-base md:text-lg font-black text-cyan-400">{formatCurrency(metrics.f20)}</span></div>
                   </div>
