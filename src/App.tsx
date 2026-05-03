@@ -390,6 +390,10 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
       if (!years.includes(currentYear) && projectedRemainder > 0) years.push(currentYear);
       years.sort((a, b) => a - b);
 
+      const growthColor = '#34d399'; // Emerald 400
+      const capitalColor = isDarkMode ? '#e4e4e7' : '#52525b'; // Zinc 200/700
+      const projectionColor = '#a78bfa'; // Violet 400
+
       return {
         labels: years.map(String),
         datasets: [
@@ -399,8 +403,8 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
             backgroundColor: (context: any) => {
               const ctx = context.chart.ctx;
               const gradient = ctx.createLinearGradient(0, context.chart.chartArea ? context.chart.chartArea.top : 0, 0, context.chart.chartArea ? context.chart.chartArea.bottom : 400);
-              gradient.addColorStop(0, brandColor);
-              gradient.addColorStop(1, brandColor + '44');
+              gradient.addColorStop(0, capitalColor);
+              gradient.addColorStop(1, capitalColor + '44');
               return gradient;
             },
             borderRadius: years.map(y => 
@@ -416,20 +420,21 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
             backgroundColor: (context: any) => {
               const ctx = context.chart.ctx;
               const gradient = ctx.createLinearGradient(0, context.chart.chartArea ? context.chart.chartArea.top : 0, 0, context.chart.chartArea ? context.chart.chartArea.bottom : 400);
-              gradient.addColorStop(0, brandColor + '88');
-              gradient.addColorStop(1, brandColor + '11');
+              gradient.addColorStop(0, projectionColor + '88');
+              gradient.addColorStop(1, projectionColor + '11');
               return gradient;
             },
             borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
             stack: 'combined',
             borderWidth: 1,
-            borderColor: brandColor,
+            borderColor: projectionColor + '44',
             borderDash: [5, 5],
           }
         ]
       };
     } else {
       // Monthly view
+      const growthColor = '#34d399'; // Emerald 400
       const monthlyData: Record<number, number> = {};
       for (let i = 0; i < 12; i++) monthlyData[i] = 0;
       
@@ -453,8 +458,8 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
             backgroundColor: (context: any) => {
               const ctx = context.chart.ctx;
               const gradient = ctx.createLinearGradient(0, context.chart.chartArea ? context.chart.chartArea.top : 0, 0, context.chart.chartArea ? context.chart.chartArea.bottom : 400);
-              gradient.addColorStop(0, brandColor);
-              gradient.addColorStop(1, brandColor + '33');
+              gradient.addColorStop(0, growthColor);
+              gradient.addColorStop(1, growthColor + '33');
               return gradient;
             },
             borderRadius: 4,
@@ -621,8 +626,23 @@ const NumberTicker = ({ value }: { value: number }) => {
 };
 
 const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highlightColor = 'brand', delay = 0 }: any) => {
-  const colorClass = highlightColor === 'cyan' ? 'text-cyan-400' : 'text-brand';
-  const lineGlow = highlightColor === 'cyan' ? 'group-hover:bg-cyan-500/50' : 'group-hover:bg-brand/50';
+  const colorMap: Record<string, string> = {
+    brand: 'text-brand',
+    cyan: 'text-cyan-400',
+    emerald: 'text-emerald-400',
+    violet: 'text-violet-400',
+    zinc: 'text-zinc-400',
+  };
+  const glowMap: Record<string, string> = {
+    brand: 'group-hover:bg-brand/50',
+    cyan: 'group-hover:bg-cyan-500/50',
+    emerald: 'group-hover:bg-emerald-500/50',
+    violet: 'group-hover:bg-violet-500/50',
+    zinc: 'group-hover:bg-white/50',
+  };
+
+  const colorClass = colorMap[highlightColor] || colorMap.brand;
+  const lineGlow = glowMap[highlightColor] || glowMap.brand;
 
   return (
     <motion.div 
@@ -1277,6 +1297,7 @@ export default function App() {
                   rawValue={metrics.currentMV}
                   icon={IndianRupee} 
                   delay={0.1}
+                  highlightColor="zinc"
                 />
                 <MetricCard 
                   title="Net Deposits" 
@@ -1284,6 +1305,7 @@ export default function App() {
                   rawValue={metrics.net}
                   icon={Wallet} 
                   delay={0.2}
+                  highlightColor="zinc"
                 />
                 <MetricCard 
                   title="Unrealized P/L" 
@@ -1293,6 +1315,7 @@ export default function App() {
                   trend={metrics.pl >= 0 ? 'up' : 'down'} 
                   subtext={`${metrics.pl >= 0 ? 'Profit' : 'Loss'} • XIRR: ${formatPercent(metrics.xirr)}`} 
                   delay={0.3}
+                  highlightColor="emerald"
                 />
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
@@ -1300,7 +1323,7 @@ export default function App() {
                   transition={{ duration: 0.8, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02]"
                 >
-                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Avg Savings</h3><Calendar className="text-brand" size={18} strokeWidth={2.5} /></div>
+                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Avg Savings</h3><Calendar className="text-zinc-400" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Annual</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white"><NumberTicker value={metrics.avgY} /></span></div>
                     <div className="flex justify-between items-baseline pt-1 border-t border-black/5 dark:border-white/10"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Monthly</span><span className="text-zinc-700 dark:text-zinc-300"><NumberTicker value={metrics.avgM} /></span></div>
@@ -1313,14 +1336,14 @@ export default function App() {
                   transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
                   className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02]"
                 >
-                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Future Wealth</h3><Rocket className="text-cyan-400" size={18} strokeWidth={2.5} /></div>
+                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Future Wealth</h3><Rocket className="text-violet-400" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">End of Year</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white"><NumberTicker value={metrics.fEoY} /></span></div>
                     <div className="flex justify-between items-baseline text-zinc-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase">5 Years</span><span className="text-sm md:text-base font-semibold"><NumberTicker value={metrics.f5} /></span></div>
                     <div className="flex justify-between items-baseline text-zinc-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase">10 Years</span><span className="text-sm md:text-base font-semibold"><NumberTicker value={metrics.f10} /></span></div>
-                    <div className="flex justify-between items-baseline pt-1 border-t border-white/5"><span className="text-[9px] md:text-[10px] font-black text-cyan-600 tracking-widest uppercase">20 Years</span><span className="text-base md:text-lg font-black text-cyan-400"><NumberTicker value={metrics.f20} /></span></div>
+                    <div className="flex justify-between items-baseline pt-1 border-t border-white/5"><span className="text-[9px] md:text-[10px] font-black text-violet-600 tracking-widest uppercase">20 Years</span><span className="text-base md:text-lg font-black text-violet-400"><NumberTicker value={metrics.f20} /></span></div>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10 space-y-2"><div className="flex justify-between items-center text-[7px] md:text-[8px] font-bold tracking-widest uppercase text-zinc-500"><span>Progress to 10 Cr</span><span className="text-cyan-400">{((metrics.f20 / 100000000) * 100).toFixed(1)}%</span></div><div className="w-full h-1 bg-black/5 dark:bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.5)] transition-all duration-1000" style={{ width: `${Math.min(100, (metrics.f20 / 100000000) * 100)}%` }} /></div></div>
+                  <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10 space-y-2"><div className="flex justify-between items-center text-[7px] md:text-[8px] font-bold tracking-widest uppercase text-zinc-500"><span>Progress to 10 Cr</span><span className="text-violet-400">{((metrics.f20 / 100000000) * 100).toFixed(1)}%</span></div><div className="w-full h-1 bg-black/5 dark:bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.5)] transition-all duration-1000" style={{ width: `${Math.min(100, (metrics.f20 / 100000000) * 100)}%` }} /></div></div>
                 </motion.div>
               </div>
 
