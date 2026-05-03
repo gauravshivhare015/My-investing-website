@@ -38,7 +38,9 @@
       "properties": {
         "id": { "type": "string" },
         "title": { "type": "string" },
-        "content": { "type": "string" }
+        "content": { "type": "string" },
+        "usageCount": { "type": "number", "description": "Number of times this prompt was used" },
+        "lastUsedAt": { "type": "number", "description": "Timestamp of last use" }
       }
     },
     "File": {
