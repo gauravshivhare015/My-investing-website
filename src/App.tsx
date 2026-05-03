@@ -15,7 +15,7 @@ import {
 import * as XLSX from 'xlsx';
 
 // --- Firebase Imports ---
-import { onAuthStateChanged, GoogleAuthProvider, signInWithCredential, signOut } from 'firebase/auth';
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
@@ -391,7 +391,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
       years.sort((a, b) => a - b);
 
       const growthColor = '#34d399'; // Emerald 400
-      const capitalColor = isDarkMode ? '#e4e4e7' : '#52525b'; // Zinc 200/700
+      const capitalColor = isDarkMode ? '#ffffff' : '#4b5563'; // Crisp White / Zinc 600
       const projectionColor = '#a78bfa'; // Violet 400
 
       return {
@@ -404,7 +404,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
               const ctx = context.chart.ctx;
               const gradient = ctx.createLinearGradient(0, context.chart.chartArea ? context.chart.chartArea.top : 0, 0, context.chart.chartArea ? context.chart.chartArea.bottom : 400);
               gradient.addColorStop(0, capitalColor);
-              gradient.addColorStop(1, capitalColor + '44');
+              gradient.addColorStop(1, capitalColor + (isDarkMode ? '22' : '44'));
               return gradient;
             },
             borderRadius: years.map(y => 
@@ -434,7 +434,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
       };
     } else {
       // Monthly view
-      const growthColor = '#34d399'; // Emerald 400
+      const growthColor = '#10b981'; // Emerald 500
       const monthlyData: Record<number, number> = {};
       for (let i = 0; i < 12; i++) monthlyData[i] = 0;
       
@@ -459,7 +459,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
               const ctx = context.chart.ctx;
               const gradient = ctx.createLinearGradient(0, context.chart.chartArea ? context.chart.chartArea.top : 0, 0, context.chart.chartArea ? context.chart.chartArea.bottom : 400);
               gradient.addColorStop(0, growthColor);
-              gradient.addColorStop(1, growthColor + '33');
+              gradient.addColorStop(1, growthColor + '22');
               return gradient;
             },
             borderRadius: 4,
@@ -819,9 +819,9 @@ export default function App() {
 
   const [brandColor, setBrandColor] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('brandColor') || '#f59e0b';
+      return localStorage.getItem('brandColor') || '#10b981';
     }
-    return '#f59e0b';
+    return '#10b981';
   });
   const [showThemePicker, setShowThemePicker] = useState(false);
 
@@ -869,51 +869,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handleCredentialResponse = async (response: any) => {
+      // not needed since we're using signInWithPopup
+    };
     if (!loadingAuth && !user) {
-      const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
-      if (!clientId || clientId === "YOUR_GOOGLE_CLIENT_ID") {
-        setAuthError("VITE_GOOGLE_CLIENT_ID is missing or not configured in environment variables. Please add it to your secrets.");
-        return;
-      }
-
-      const handleCredentialResponse = async (response: any) => {
-        try {
-          const credential = GoogleAuthProvider.credential(response.credential);
-          await signInWithCredential(auth, credential);
-          setAuthError(null);
-        } catch (error: any) {
-          console.error("GSI Login failed", error);
-          setAuthError(`Firebase Sign-in Error: ${error.message} (Code: ${error.code})`);
-        }
-      };
-
-      const initGsi = () => {
-        // @ts-ignore
-        if (window.google && window.google.accounts) {
-          // @ts-ignore
-          window.google.accounts.id.initialize({
-            client_id: clientId,
-            callback: handleCredentialResponse,
-            context: 'signin',
-            ux_mode: 'popup',
-          });
-          const btn = document.getElementById("gsi-button-container");
-          if (btn) {
-            // @ts-ignore
-            window.google.accounts.id.renderButton(
-              btn,
-              { theme: isDarkMode ? "filled_black" : "outline", size: "large", shape: "pill" }
-            );
-          }
-        } else {
-          // Retry in 500ms if script not loaded
-          setTimeout(initGsi, 500);
-        }
-      };
-
-      initGsi();
+      // Intentionally left mostly blank, handled by the onClick of the new button
     }
   }, [loadingAuth, user, isDarkMode]);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      setAuthError(null);
+    } catch (error: any) {
+      console.error("Popup Login failed", error);
+      setAuthError(`Firebase Sign-in Error: ${error.message} (Code: ${error.code})`);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -1204,7 +1177,13 @@ export default function App() {
           <AnimatedLogo brandColor={brandColor} />
           <h2 className="text-xl font-bold mt-6 mb-2 tracking-tight">Portfolio Tracker Pro</h2>
           <p className="text-zinc-500 text-sm mb-8 text-center">Sign in to access your dashboard.</p>
-          <div id="gsi-button-container" className="w-full flex justify-center min-h-[44px]"></div>
+          <button 
+            onClick={handleGoogleSignIn}
+            className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white rounded-full font-bold shadow-sm hover:shadow-md border border-black/10 dark:border-white/10 transition-all hover:scale-[1.02]"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/><path d="M1 1h22v22H1z" fill="none"/></svg>
+            Continue with Google
+          </button>
         </div>
       </div>
     );
@@ -1224,47 +1203,7 @@ export default function App() {
                 <span className="text-[9px] md:text-[10px] font-bold text-blue-400 uppercase tracking-tight">Export</span>
               </button>
             </div>
-            <div className="flex items-center gap-2 md:gap-4">
-              <div className="relative">
-                <button 
-                  onClick={() => setShowThemePicker(!showThemePicker)}
-                  className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all flex items-center gap-2"
-                  title="Customize Theme"
-                >
-                  <div className="w-4 h-4 rounded-full border border-white/20 shadow-sm" style={{ backgroundColor: brandColor }} />
-                </button>
-
-                {showThemePicker && (
-              <div className="absolute right-0 mt-3 p-4 bg-surface-light dark:bg-[#0d0d0d] border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl z-[60] w-64 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <h4 className="text-[10px] font-black tracking-widest uppercase text-zinc-500 mb-4">Choose Primary Color</h4>
-                    <div className="grid grid-cols-4 gap-2 mb-4">
-                      {PREDEFINED_THEMES.map(t => (
-                        <button
-                          key={t.id}
-                          onClick={() => { setBrandColor(t.color); setShowThemePicker(false); }}
-                          className={`w-10 h-10 rounded-xl border-2 transition-all ${brandColor === t.color ? 'border-brand scale-110' : 'border-transparent hover:scale-105'}`}
-                          style={{ backgroundColor: t.color }}
-                          title={t.name}
-                        />
-                      ))}
-                    </div>
-                    <div className="space-y-2">
-                       <h4 className="text-[10px] font-black tracking-widest uppercase text-zinc-500">Custom Hex Code</h4>
-                       <div className="flex gap-2">
-                         <input 
-                           type="text" 
-                           value={brandColor} 
-                           onChange={(e) => setBrandColor(e.target.value)}
-                           className="flex-1 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono uppercase focus:outline-none focus:border-brand transition-all"
-                           placeholder="#000000"
-                         />
-                         <div className="w-8 h-8 rounded-lg border border-black/10 dark:border-white/10 shadow-inner" style={{ backgroundColor: brandColor }} />
-                       </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
+            <div className="flex items-center gap-2 md:gap-4 font-mono">
               <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-full border border-black/10 dark:border-white/10 shrink-0">
                 <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-brand text-black dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
                 <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-brand text-black dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
@@ -1287,7 +1226,15 @@ export default function App() {
           </div>
         </nav>
 
-        <div className="max-w-7xl mx-auto px-4 py-4 md:py-10 relative z-10 dashboard-gradient min-h-screen">
+        <div className="max-w-7xl mx-auto px-4 py-4 md:py-10 relative z-10 min-h-screen">
+          {/* Animated Background Mesh */}
+          <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-brand/5 rounded-full blur-[120px] animate-blob filter" />
+            <div className="absolute top-[20%] right-[-5%] w-[30%] h-[30%] bg-violet-500/5 rounded-full blur-[100px] animate-blob animation-delay-2000 filter" />
+            <div className="absolute bottom-[-10%] left-[20%] w-[35%] h-[35%] bg-cyan-400/5 rounded-full blur-[110px] animate-blob animation-delay-4000 filter" />
+            <div className="absolute inset-0 grid-background opacity-50 dark:opacity-20" />
+          </div>
+
           {activeTab === 'dashboard' && (
             <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
@@ -1359,9 +1306,9 @@ export default function App() {
                     <p className="text-[8px] md:text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Total market value vs benchmark cagr</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-slate-400" /> Net Deposits</div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-brand" /> Market Value</div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-500" /> Benchmark</div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-zinc-400" /> Net Deposits</div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-400" /> Market Value</div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-400" /> Benchmark</div>
                   </div>
                 </div>
                 <div className="h-[250px] md:h-[400px] w-full">
@@ -1371,9 +1318,9 @@ export default function App() {
                       <XAxis dataKey="date" tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} minTickGap={30} />
                       <YAxis tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
-                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#ffffff" : "#0f172a"} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#ffffff' : '#0f172a'}} />
-                      <Line type="monotone" dataKey="Market Value" stroke={brandColor} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: brandColor}} />
-                      <Line type="monotone" dataKey="Benchmark Value" stroke="#06b6d4" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: '#06b6d4'}} />
+                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#71717a" : "#94a3b8"} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#71717a' : '#94a3b8'}} />
+                      <Line type="monotone" dataKey="Market Value" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#34d399"}} />
+                      <Line type="monotone" dataKey="Benchmark Value" stroke="#22d3ee" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: '#22d3ee'}} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
