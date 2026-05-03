@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, animate } from 'motion/react';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer 
@@ -565,12 +565,34 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
   );
 };
 
-const MetricCard = ({ title, value, icon: Icon, subtext, trend, highlightColor = 'brand' }: any) => {
+const NumberTicker = ({ value }: { value: number }) => {
+  const [displayValue, setDisplayValue] = useState(0);
+  
+  useEffect(() => {
+    const controls = animate(displayValue, value, {
+      duration: 1.5,
+      ease: [0.32, 0.72, 0, 1], // Custom cubic-bezier for smooth finish
+      onUpdate(latest) {
+        setDisplayValue(Math.floor(latest));
+      }
+    });
+    return () => controls.stop();
+  }, [value]);
+
+  return <span>{formatCurrency(displayValue)}</span>;
+};
+
+const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highlightColor = 'brand', delay = 0 }: any) => {
   const colorClass = highlightColor === 'cyan' ? 'text-cyan-400' : 'text-brand';
   const lineGlow = highlightColor === 'cyan' ? 'group-hover:bg-cyan-500/50' : 'group-hover:bg-brand/50';
 
   return (
-    <div className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02] hover:bg-white/50 dark:hover:bg-white/[0.06]">
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.8, delay, ease: [0.16, 1, 0.3, 1] }}
+      className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02] hover:bg-white/50 dark:hover:bg-white/[0.06]"
+    >
       <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[1px] bg-white/0 ${lineGlow} blur-[1px] transition-all duration-500`} />
       <div className="flex items-center justify-between mb-3 md:mb-4">
         <h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">{title}</h3>
@@ -579,7 +601,9 @@ const MetricCard = ({ title, value, icon: Icon, subtext, trend, highlightColor =
         </div>
       </div>
       <div>
-        <div className="text-xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-1 tracking-tight truncate">{value}</div>
+        <div className="text-xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-1 tracking-tight truncate">
+          {typeof rawValue === 'number' ? <NumberTicker value={rawValue} /> : value}
+        </div>
         {subtext && (
           <div className={`text-[10px] md:text-sm flex items-center gap-1 mt-1 md:mt-2 font-medium ${trend === 'up' ? 'text-emerald-400' : trend === 'down' ? 'text-rose-400' : 'text-zinc-500'}`}>
             {trend === 'up' && <ArrowUpRight size={14} strokeWidth={2.5} />}
@@ -588,7 +612,7 @@ const MetricCard = ({ title, value, icon: Icon, subtext, trend, highlightColor =
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -1205,40 +1229,69 @@ export default function App() {
           </div>
         </nav>
 
-        <div className="max-w-7xl mx-auto px-4 py-4 md:py-10 relative z-10">
+        <div className="max-w-7xl mx-auto px-4 py-4 md:py-10 relative z-10 dashboard-gradient min-h-screen">
           {activeTab === 'dashboard' && (
             <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                <MetricCard title="Current Value" value={formatCurrency(metrics.currentMV)} icon={IndianRupee} />
-                <MetricCard title="Net Deposits" value={formatCurrency(metrics.net)} icon={Wallet} />
+                <MetricCard 
+                  title="Current Value" 
+                  value={formatCurrency(metrics.currentMV)} 
+                  rawValue={metrics.currentMV}
+                  icon={IndianRupee} 
+                  delay={0.1}
+                />
+                <MetricCard 
+                  title="Net Deposits" 
+                  value={formatCurrency(metrics.net)} 
+                  rawValue={metrics.net}
+                  icon={Wallet} 
+                  delay={0.2}
+                />
                 <MetricCard 
                   title="Unrealized P/L" 
                   value={formatCurrency(metrics.pl)} 
+                  rawValue={metrics.pl}
                   icon={TrendingUp} 
                   trend={metrics.pl >= 0 ? 'up' : 'down'} 
                   subtext={`${metrics.pl >= 0 ? 'Profit' : 'Loss'} • XIRR: ${formatPercent(metrics.xirr)}`} 
+                  delay={0.3}
                 />
-                <div className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02]">
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02]"
+                >
                   <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Avg Savings</h3><Calendar className="text-brand" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Annual</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.avgY)}</span></div>
-                    <div className="flex justify-between items-baseline pt-1 border-t border-black/5 dark:border-white/10"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Monthly</span><span className="text-zinc-700 dark:text-zinc-300">{formatCurrency(metrics.avgM)}</span></div>
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Daily</span><span className="text-[11px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400">{formatCurrency(metrics.avgD)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Annual</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white"><NumberTicker value={metrics.avgY} /></span></div>
+                    <div className="flex justify-between items-baseline pt-1 border-t border-black/5 dark:border-white/10"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Monthly</span><span className="text-zinc-700 dark:text-zinc-300"><NumberTicker value={metrics.avgM} /></span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">Daily</span><span className="text-[11px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400"><NumberTicker value={metrics.avgD} /></span></div>
                   </div>
-                </div>
-                <div className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02]">
+                </motion.div>
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                  className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02]"
+                >
                   <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Future Wealth</h3><Rocket className="text-cyan-400" size={18} strokeWidth={2.5} /></div>
                   <div className="space-y-3">
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">End of Year</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(metrics.fEoY)}</span></div>
-                    <div className="flex justify-between items-baseline text-zinc-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase">5 Years</span><span className="text-sm md:text-base font-semibold">{formatCurrency(metrics.f5)}</span></div>
-                    <div className="flex justify-between items-baseline text-zinc-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase">10 Years</span><span className="text-sm md:text-base font-semibold">{formatCurrency(metrics.f10)}</span></div>
-                    <div className="flex justify-between items-baseline pt-1 border-t border-white/5"><span className="text-[9px] md:text-[10px] font-black text-cyan-600 tracking-widest uppercase">20 Years</span><span className="text-base md:text-lg font-black text-cyan-400">{formatCurrency(metrics.f20)}</span></div>
+                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">End of Year</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white"><NumberTicker value={metrics.fEoY} /></span></div>
+                    <div className="flex justify-between items-baseline text-zinc-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase">5 Years</span><span className="text-sm md:text-base font-semibold"><NumberTicker value={metrics.f5} /></span></div>
+                    <div className="flex justify-between items-baseline text-zinc-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase">10 Years</span><span className="text-sm md:text-base font-semibold"><NumberTicker value={metrics.f10} /></span></div>
+                    <div className="flex justify-between items-baseline pt-1 border-t border-white/5"><span className="text-[9px] md:text-[10px] font-black text-cyan-600 tracking-widest uppercase">20 Years</span><span className="text-base md:text-lg font-black text-cyan-400"><NumberTicker value={metrics.f20} /></span></div>
                   </div>
                   <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10 space-y-2"><div className="flex justify-between items-center text-[7px] md:text-[8px] font-bold tracking-widest uppercase text-zinc-500"><span>Progress to 10 Cr</span><span className="text-cyan-400">{((metrics.f20 / 100000000) * 100).toFixed(1)}%</span></div><div className="w-full h-1 bg-black/5 dark:bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.5)] transition-all duration-1000" style={{ width: `${Math.min(100, (metrics.f20 / 100000000) * 100)}%` }} /></div></div>
-                </div>
+                </motion.div>
               </div>
 
-              <div className="glass-card rounded-2xl p-4 md:p-6 overflow-hidden">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.8, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                className="glass-card rounded-2xl p-4 md:p-6 overflow-hidden"
+              >
                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
                   <div>
                     <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs">Performance Comparison</h3>
@@ -1263,7 +1316,7 @@ export default function App() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-              </div>
+              </motion.div>
 
               <NetSavingsChart transactions={validTxns} isDarkMode={isDarkMode} brandColor={brandColor} />
 
