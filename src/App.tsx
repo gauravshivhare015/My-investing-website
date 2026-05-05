@@ -700,7 +700,7 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-2 max-w-[80%]">
           <div className="text-zinc-400 dark:text-zinc-600 cursor-grab active:cursor-grabbing"><GripVertical size={14} /></div>
-          <h4 className="text-xs font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-600 dark:text-zinc-400 group-hover:text-slate-900 dark:text-white transition-colors truncate">{title || 'Untitled Prompt'}</h4>
+          <h4 className="text-sm font-bold text-slate-900 dark:text-white transition-colors truncate">{title || 'Untitled Prompt'}</h4>
         </div>
         <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
