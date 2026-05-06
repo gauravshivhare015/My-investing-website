@@ -674,10 +674,12 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
   );
 };
 
-const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, onDrop, onEditContent }: any) => {
+const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, onDrop, onEditContent, onEditTitle, onDelete }: any) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitleValue, setEditTitleValue] = useState(title);
 
   const handleCopy = () => {
     const textArea = document.createElement("textarea");
@@ -699,23 +701,55 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
     }
   };
 
+  const handleSaveTitle = () => {
+    setIsEditingTitle(false);
+    if (onEditTitle && editTitleValue !== title) {
+      onEditTitle(id, editTitleValue);
+    }
+  };
+
   return (
     <div 
-      draggable={!isEditing}
-      onDragStart={(e) => !isEditing && onDragStart(e, id)}
-      onDragOver={(e) => !isEditing && onDragOver(e, id)}
-      onDrop={(e) => !isEditing && onDrop(e, id)}
-      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-3 md:p-4 transition-all hover:border-brand/30 group ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'} flex flex-col justify-center h-14 w-full relative z-10 hover:z-20`}
+      draggable={!isEditing && !isEditingTitle}
+      onDragStart={(e) => !isEditing && !isEditingTitle && onDragStart(e, id)}
+      onDragOver={(e) => !isEditing && !isEditingTitle && onDragOver(e, id)}
+      onDrop={(e) => !isEditing && !isEditingTitle && onDrop(e, id)}
+      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-3 md:p-4 transition-all hover:border-brand/30 group ${isEditing || isEditingTitle ? '' : 'cursor-grab active:cursor-grabbing'} flex flex-col justify-center h-14 w-full relative z-10 hover:z-20`}
     >
       <div className="flex justify-between items-center w-full">
-        <div className="flex items-center gap-2 max-w-[80%]">
-          <div className={`text-zinc-400 dark:text-zinc-600 ${isEditing ? 'opacity-50' : 'cursor-grab active:cursor-grabbing'}`}><GripVertical size={14} /></div>
-          <h4 className="text-sm font-bold text-slate-900 dark:text-white transition-colors truncate">{title || 'Untitled Prompt'}</h4>
+        <div className="flex items-center gap-2 max-w-[80%] w-full">
+          <div className={`text-zinc-400 dark:text-zinc-600 ${isEditingTitle || isEditing ? 'opacity-50' : 'cursor-grab active:cursor-grabbing'}`}><GripVertical size={14} /></div>
+          {isEditingTitle ? (
+            <input
+              autoFocus
+              value={editTitleValue}
+              onChange={(e) => setEditTitleValue(e.target.value)}
+              onBlur={handleSaveTitle}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveTitle();
+                if (e.key === 'Escape') {
+                  setIsEditingTitle(false);
+                  setEditTitleValue(title);
+                }
+              }}
+              className="w-full bg-transparent text-sm font-bold text-slate-900 dark:text-white focus:outline-none border-b border-brand/50 px-1"
+            />
+          ) : (
+            <h4 
+              className="text-sm font-bold text-slate-900 dark:text-white transition-colors truncate"
+              onClick={(e) => { if (e.detail === 3) setIsEditingTitle(true); }}
+              title="Triple-click to edit title"
+            >
+              {title || 'Untitled Prompt'}
+            </h4>
+          )}
         </div>
-        {!isEditing && (
-          <button onClick={handleCopy} className={`opacity-0 group-hover:opacity-100 p-1.5 md:p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-          </button>
+        {!isEditing && !isEditingTitle && (
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={handleCopy} className={`p-1.5 md:p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+          </div>
         )}
       </div>
       <div className={`absolute top-[100%] mt-2 left-0 w-full grid transition-all duration-300 ease-in-out z-20 ${isEditing ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 group-hover:grid-rows-[1fr] group-hover:opacity-100'}`}>
@@ -864,6 +898,11 @@ export default function App() {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
   const CORRECT_PIN = '1234'; 
+  const documentFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+  const [newPromptTitle, setNewPromptTitle] = useState('');
+  const [newPromptContent, setNewPromptContent] = useState('');
 
   const [brandColor, setBrandColor] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -997,6 +1036,18 @@ export default function App() {
     }
   };
 
+  const handleAddPromptSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPromptTitle.trim() && !newPromptContent.trim()) return;
+    
+    const id = generateId();
+    updateCloudDoc('prompts', id, { title: newPromptTitle, content: newPromptContent });
+    
+    setNewPromptTitle('');
+    setNewPromptContent('');
+    setIsPromptModalOpen(false);
+  };
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -1084,6 +1135,18 @@ export default function App() {
   const handlePromptContentEdit = (id: string, newContent: string) => {
     setPrompts(prev => prev.map(p => p.id === id ? { ...p, content: newContent } : p));
     updateCloudDoc('prompts', id, { content: newContent });
+  };
+
+  const handlePromptTitleEdit = (id: string, newTitle: string) => {
+    setPrompts(prev => prev.map(p => p.id === id ? { ...p, title: newTitle } : p));
+    updateCloudDoc('prompts', id, { title: newTitle });
+  };
+
+  const handlePromptDelete = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this prompt?')) {
+      setPrompts(prev => prev.filter(p => p.id !== id));
+      deleteCloudDoc('prompts', id);
+    }
   };
 
   const handlePaste = async (e: any, collName: string, keys: string[]) => {
@@ -1459,7 +1522,7 @@ export default function App() {
 
               <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} /></motion.div>))}<motion.div layout><button onClick={() => setActiveTab('data')} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-black/10 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-zinc-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-black/5 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setActiveTab('data')} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-black/10 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-zinc-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-black/5 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
               </div>
 
               <div id="documents" className="space-y-6 pb-10">
@@ -1469,6 +1532,13 @@ export default function App() {
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Documents</h3>
                   </div>
                 </div>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  ref={documentFileInputRef}
+                  onChange={handleFileUpload}
+                />
                 {files.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                     {files.map(f => (
@@ -1482,7 +1552,7 @@ export default function App() {
                         </div>
                       </a>
                     ))}
-                    <button onClick={() => setActiveTab('data')} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-dashed border-black/10 dark:border-white/10 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/5 group flex items-center justify-center gap-4 cursor-pointer min-h-[90px]">
+                    <button onClick={() => documentFileInputRef.current?.click()} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-dashed border-black/10 dark:border-white/10 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/5 group flex items-center justify-center gap-4 cursor-pointer min-h-[90px]">
                       <div className="flex items-center gap-3 text-zinc-500 group-hover:text-cyan-500 transition-colors">
                         <Plus size={20} />
                         <span className="text-sm font-bold tracking-tight">Add Document</span>
@@ -1493,7 +1563,7 @@ export default function App() {
                   <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center">
                     <File size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" />
                     <p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">No documents uploaded yet.</p>
-                    <button onClick={() => setActiveTab('data')} className="mt-6 px-6 py-2 bg-cyan-500 text-white font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2">
+                    <button onClick={() => documentFileInputRef.current?.click()} className="mt-6 px-6 py-2 bg-cyan-500 text-white font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2">
                       <Plus size={16} /> Add Document
                     </button>
                   </div>
@@ -1517,6 +1587,66 @@ export default function App() {
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {isPromptModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/10 dark:border-white/10 w-full max-w-lg overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6">Add New Prompt</h3>
+                <form onSubmit={handleAddPromptSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2">Title</label>
+                    <input
+                      type="text"
+                      value={newPromptTitle}
+                      onChange={(e) => setNewPromptTitle(e.target.value)}
+                      placeholder="e.g. Code Review Prompt"
+                      className="w-full bg-white dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/50 transition-all font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2">Prompt</label>
+                    <textarea
+                      value={newPromptContent}
+                      onChange={(e) => setNewPromptContent(e.target.value)}
+                      placeholder="Write your prompt content here..."
+                      className="w-full bg-white dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/50 transition-all min-h-[120px] resize-y font-mono"
+                      required
+                    />
+                  </div>
+                  <div className="flex gap-3 justify-end pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setIsPromptModalOpen(false)}
+                      className="px-6 py-2.5 rounded-xl text-sm font-bold text-zinc-600 dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!newPromptTitle.trim() && !newPromptContent.trim()}
+                      className="px-6 py-2.5 rounded-xl text-sm font-bold bg-brand text-black disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98] transition-all"
+                    >
+                      Save Prompt
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
