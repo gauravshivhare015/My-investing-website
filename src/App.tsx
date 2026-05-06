@@ -10,7 +10,7 @@ import {
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ShieldCheck, GripVertical, Plus
+  ChevronDown, ShieldCheck, GripVertical, Plus, Palette
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -904,18 +904,50 @@ export default function App() {
   const [newPromptTitle, setNewPromptTitle] = useState('');
   const [newPromptContent, setNewPromptContent] = useState('');
 
-  const [brandColor, setBrandColor] = useState(() => {
+  const PRO_THEMES = useMemo(() => [
+    { id: 'midnight', name: 'Midnight', isDark: true, brandHex: '#10b981', font: '"Inter", ui-sans-serif, system-ui, sans-serif' },
+    { id: 'solar', name: 'Solar', isDark: false, brandHex: '#f97316', font: '"Outfit", ui-sans-serif, system-ui, sans-serif' },
+    { id: 'cyber', name: 'Cyberpunk', isDark: true, brandHex: '#f43f5e', font: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace' },
+    { id: 'nordic', name: 'Nordic', isDark: false, brandHex: '#0ea5e9', font: '"Inter", ui-sans-serif, system-ui, sans-serif' },
+    { id: 'editorial', name: 'Editorial', isDark: false, brandHex: '#78350f', font: '"Playfair Display", ui-serif, Georgia, serif' },
+    { id: 'graphite', name: 'Graphite', isDark: true, brandHex: '#facc15', font: '"Space Grotesk", ui-sans-serif, system-ui, sans-serif' }
+  ], []);
+
+  const [themeId, setThemeId] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('brandColor') || '#10b981';
+      return localStorage.getItem('themeId') || 'midnight';
     }
-    return '#10b981';
+    return 'midnight';
   });
-  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(event.target as Node)) {
+        setIsThemeMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const activeTheme = useMemo(() => PRO_THEMES.find(t => t.id === themeId) || PRO_THEMES[0], [themeId, PRO_THEMES]);
+  const isDarkMode = activeTheme.isDark;
+  const brandColor = activeTheme.brandHex;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     document.documentElement.style.setProperty('--brand-color-rgb', hexToRgb(brandColor));
-    localStorage.setItem('brandColor', brandColor);
-  }, [brandColor]);
+    document.documentElement.style.setProperty('--font-sans', activeTheme.font);
+    
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('themeId', themeId);
+  }, [activeTheme, brandColor, isDarkMode, themeId]);
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
@@ -932,24 +964,7 @@ export default function App() {
     }
   };
 
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('theme');
-      if (saved) return saved === 'dark';
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    return true;
-  });
 
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDarkMode]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -1394,13 +1409,44 @@ export default function App() {
                 >
                   <LogOut size={18} />
                 </button>
-                <button 
-                  onClick={() => setIsDarkMode(!isDarkMode)}
-                  className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all"
-                  aria-label="Toggle theme"
-                >
-                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-                </button>
+                <div className="relative" ref={themeMenuRef}>
+                  <button 
+                    onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+                    className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all"
+                    aria-label="Theme options"
+                  >
+                    <Palette size={20} />
+                  </button>
+                  <AnimatePresence>
+                    {isThemeMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 mt-3 w-48 bg-surface-light dark:bg-[#1a1a1a] rounded-2xl border border-black/10 dark:border-white/10 shadow-2xl overflow-hidden z-50 flex flex-col p-1.5 gap-1"
+                      >
+                        {PRO_THEMES.map(theme => (
+                          <button
+                            key={theme.id}
+                            onClick={() => { setThemeId(theme.id); setIsThemeMenuOpen(false); }}
+                            className={`flex justify-between items-center px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${themeId === theme.id ? 'bg-black/5 dark:bg-white/5 text-slate-900 dark:text-white' : 'text-zinc-500 dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}
+                            style={{ fontFamily: theme.font }}
+                          >
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span>{theme.name}</span>
+                              <span className="text-[10px] font-medium opacity-60 leading-none">{theme.isDark ? 'Dark' : 'Light'} Mode</span>
+                            </div>
+                            <span 
+                              className="w-4 h-4 rounded-full border border-black/10 dark:border-white/10 shadow-sm shrink-0"
+                              style={{ backgroundColor: theme.brandHex }}
+                            />
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </div>
           </div>
