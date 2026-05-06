@@ -846,6 +846,14 @@ export default function App() {
   const [files, setFiles] = useState<any[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      const top = el.getBoundingClientRect().top + window.scrollY - 130; // Offset for sticky nav
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
+  };
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme');
@@ -1253,40 +1261,51 @@ export default function App() {
   }
 
   return (
-    <div className={`relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] overflow-x-hidden selection:bg-brand/30`}>
+    <div className={`relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] selection:bg-brand/30`}>
       <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
-      <div className="relative z-10 w-full h-full pb-20">
-        <nav className="border-b border-black/5 dark:border-white/5 bg-black/50 backdrop-blur-2xl sticky top-0 z-50 h-20 flex items-center">
-          <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <AnimatedLogo brandColor={brandColor} />
+      <div className="relative z-10 w-full pb-20">
+        <nav className="border-b border-black/5 dark:border-white/5 bg-black/50 backdrop-blur-2xl sticky top-0 z-50 flex flex-col w-full">
+          <div className="h-20 flex items-center border-b border-black/5 dark:border-white/5 md:border-none">
+            <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <AnimatedLogo brandColor={brandColor} />
 
-              <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
-                <Download size={12} className="text-blue-400" />
-                <span className="text-[9px] md:text-[10px] font-bold text-blue-400 uppercase tracking-tight">Export</span>
-              </button>
-            </div>
-            <div className="flex items-center gap-2 md:gap-4 font-mono">
-              <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-full border border-black/10 dark:border-white/10 shrink-0">
-                <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-brand text-black dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
-                <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-brand text-black dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
+                <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
+                  <Download size={12} className="text-blue-400" />
+                  <span className="text-[9px] md:text-[10px] font-bold text-blue-400 uppercase tracking-tight">Export</span>
+                </button>
               </div>
-              <button 
-                onClick={handleLogout}
-                className="p-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all"
-                title="Log Out"
-              >
-                <LogOut size={18} />
-              </button>
-              <button 
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all"
-                aria-label="Toggle theme"
-              >
-                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-              </button>
+              <div className="flex items-center gap-2 md:gap-4 font-mono">
+                <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-full border border-black/10 dark:border-white/10 shrink-0">
+                  <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-brand text-black dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
+                  <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-brand text-black dark:text-black shadow-[0_0_15px_rgb(var(--brand-color-rgb)_/_0.3)]' : 'text-zinc-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
+                </div>
+                <button 
+                  onClick={handleLogout}
+                  className="p-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all"
+                  title="Log Out"
+                >
+                  <LogOut size={18} />
+                </button>
+                <button 
+                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all"
+                  aria-label="Toggle theme"
+                >
+                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+                </button>
+              </div>
             </div>
           </div>
+          {activeTab === 'dashboard' && (
+            <div className="max-w-7xl mx-auto px-4 w-full overflow-x-auto hide-scrollbar flex items-center justify-start gap-6 py-3 text-xs md:text-sm font-bold tracking-tight text-zinc-500 uppercase">
+              <button onClick={() => scrollToSection('dashboards')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Dashboards</button>
+              <button onClick={() => scrollToSection('performance')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Performance Comparison</button>
+              <button onClick={() => scrollToSection('savings')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Net Savings</button>
+              <button onClick={() => scrollToSection('prompts')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Prompts</button>
+              <button onClick={() => scrollToSection('documents')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Documents</button>
+            </div>
+          )}
         </nav>
 
         <div className="max-w-7xl mx-auto px-4 py-4 md:py-10 relative z-10 min-h-screen">
@@ -1300,7 +1319,7 @@ export default function App() {
 
           {activeTab === 'dashboard' && (
             <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+              <div id="dashboards" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                 <MetricCard 
                   title="Current Value" 
                   value={formatCurrency(metrics.currentMV)} 
@@ -1358,6 +1377,7 @@ export default function App() {
               </div>
 
               <motion.div 
+                id="performance"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.8, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
@@ -1389,14 +1409,16 @@ export default function App() {
                 </div>
               </motion.div>
 
-              <NetSavingsChart transactions={validTxns} isDarkMode={isDarkMode} brandColor={brandColor} />
+              <div id="savings">
+                <NetSavingsChart transactions={validTxns} isDarkMode={isDarkMode} brandColor={brandColor} />
+              </div>
 
-              <div className="space-y-6 pb-10">
+              <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
                 {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id}><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} /></motion.div>))}</div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
               </div>
 
-              <div className="space-y-6 pb-10">
+              <div id="documents" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-500"><File size={20} /></div>
