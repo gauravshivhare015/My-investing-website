@@ -18,7 +18,8 @@
 }
 
 html, body {
-  @apply antialiased overflow-x-hidden;
+  @apply antialiased;
+  overflow-x: clip;
 }
 
 /* Custom Scrollbar */
