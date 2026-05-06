@@ -705,7 +705,7 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
       onDragStart={(e) => !isEditing && onDragStart(e, id)}
       onDragOver={(e) => !isEditing && onDragOver(e, id)}
       onDrop={(e) => !isEditing && onDrop(e, id)}
-      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-4 md:p-5 transition-all hover:border-brand/30 group ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'} flex flex-col justify-center h-40 w-full relative overflow-hidden`}
+      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-3 md:p-4 transition-all hover:border-brand/30 group ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'} flex flex-col justify-center h-14 w-full relative z-10 hover:z-20`}
     >
       <div className="flex justify-between items-center w-full">
         <div className="flex items-center gap-2 max-w-[80%]">
@@ -718,9 +718,9 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
           </button>
         )}
       </div>
-      <div className={`grid transition-all duration-300 ease-in-out w-full ${isEditing ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 group-hover:grid-rows-[1fr] group-hover:opacity-100 group-hover:mt-3'}`}>
-        <div className="overflow-hidden w-full">
-          <div className="bg-muted-light dark:bg-black/40 rounded-xl p-3 border border-black/5 dark:border-white/5 h-full max-h-[80px] overflow-y-auto">
+      <div className={`absolute top-[100%] mt-2 left-0 w-full grid transition-all duration-300 ease-in-out z-20 ${isEditing ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 group-hover:grid-rows-[1fr] group-hover:opacity-100'}`}>
+        <div className="overflow-hidden w-full shadow-2xl rounded-xl">
+          <div className="bg-surface-light dark:bg-[#1a1a1a] rounded-xl p-3 border border-black/10 dark:border-white/10 max-h-[160px] overflow-y-auto w-full">
             {isEditing ? (
               <textarea
                 autoFocus
@@ -734,7 +734,7 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
                     setEditValue(content);
                   }
                 }}
-                className="w-full bg-transparent text-xs text-zinc-500 font-mono resize-none focus:outline-none min-h-[48px]"
+                className="w-full bg-transparent text-xs text-slate-900 dark:text-white font-mono resize-none focus:outline-none min-h-[48px]"
               />
             ) : (
               <p 
@@ -1459,7 +1459,7 @@ export default function App() {
 
               <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id}><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} /></motion.div>))}<motion.div layout><button onClick={() => setActiveTab('data')} className="h-full w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-black/10 dark:border-white/10 p-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex flex-col items-center justify-center gap-3 text-zinc-500 hover:text-brand cursor-pointer min-h-[160px]"><div className="p-3 bg-black/5 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={24} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setActiveTab('data')} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} /></motion.div>))}<motion.div layout><button onClick={() => setActiveTab('data')} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-black/10 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-zinc-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-black/5 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setActiveTab('data')} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
               </div>
 
               <div id="documents" className="space-y-6 pb-10">
