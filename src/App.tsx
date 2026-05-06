@@ -653,7 +653,7 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
     >
       <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[1px] bg-white/0 ${lineGlow} blur-[1px] transition-all duration-500`} />
       <div className="flex items-center justify-between mb-3 md:mb-4">
-        <h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">{title}</h3>
+        <h3 className="text-[10px] md:text-sm font-bold text-slate-900 dark:text-white tracking-widest uppercase">{title}</h3>
         <div className={`p-1.5 md:p-2 bg-black/5 dark:bg-white/5 rounded-lg md:rounded-xl ${colorClass} group-hover:scale-110 transition-all duration-300`}>
           <Icon size={18} strokeWidth={2.5} />
         </div>
@@ -705,22 +705,22 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
       onDragStart={(e) => !isEditing && onDragStart(e, id)}
       onDragOver={(e) => !isEditing && onDragOver(e, id)}
       onDrop={(e) => !isEditing && onDrop(e, id)}
-      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-5 transition-all hover:border-brand/30 group ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'} flex flex-col h-full`}
+      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-4 md:p-5 transition-all hover:border-brand/30 group ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'} flex flex-col justify-center h-40 w-full relative overflow-hidden`}
     >
-      <div className="flex justify-between items-start mb-3">
+      <div className="flex justify-between items-center w-full">
         <div className="flex items-center gap-2 max-w-[80%]">
           <div className={`text-zinc-400 dark:text-zinc-600 ${isEditing ? 'opacity-50' : 'cursor-grab active:cursor-grabbing'}`}><GripVertical size={14} /></div>
           <h4 className="text-sm font-bold text-slate-900 dark:text-white transition-colors truncate">{title || 'Untitled Prompt'}</h4>
         </div>
         {!isEditing && (
-          <button onClick={handleCopy} className={`opacity-0 group-hover:opacity-100 p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
+          <button onClick={handleCopy} className={`opacity-0 group-hover:opacity-100 p-1.5 md:p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
         )}
       </div>
-      <div className={`grid transition-all duration-300 ease-in-out ${isEditing ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 group-hover:grid-rows-[1fr] group-hover:opacity-100'}`}>
-        <div className="overflow-hidden">
-          <div className="bg-muted-light dark:bg-black/40 rounded-xl p-3 border border-black/5 dark:border-white/5 max-h-48 overflow-y-auto mt-2">
+      <div className={`grid transition-all duration-300 ease-in-out w-full ${isEditing ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 group-hover:grid-rows-[1fr] group-hover:opacity-100 group-hover:mt-3'}`}>
+        <div className="overflow-hidden w-full">
+          <div className="bg-muted-light dark:bg-black/40 rounded-xl p-3 border border-black/5 dark:border-white/5 h-full max-h-[80px] overflow-y-auto">
             {isEditing ? (
               <textarea
                 autoFocus
@@ -734,7 +734,7 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
                     setEditValue(content);
                   }
                 }}
-                className="w-full bg-transparent text-xs text-zinc-500 font-mono resize-none focus:outline-none min-h-[80px]"
+                className="w-full bg-transparent text-xs text-zinc-500 font-mono resize-none focus:outline-none min-h-[48px]"
               />
             ) : (
               <p 
@@ -1628,9 +1628,9 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
         </div>
       )}
 
-      <div className="overflow-x-auto bg-muted-light dark:bg-black/40 scrollbar-thin scrollbar-thumb-white/10 touch-pan-x">
-        <table className="w-full text-[11px] md:text-xs text-left border-collapse min-w-[450px] md:min-w-[500px]">
-          <thead className="sticky top-0 bg-background-light dark:bg-[#111] z-10 shadow-sm border-b border-black/5 dark:border-white/5">
+      <div className="overflow-auto max-h-[400px] md:max-h-[500px] bg-muted-light dark:bg-black/40 scrollbar-thin scrollbar-thumb-white/10 relative shadow-inner">
+        <table className="w-full text-[11px] md:text-xs text-left border-collapse table-fixed min-w-[450px] md:min-w-[500px]">
+          <thead className="sticky top-0 bg-surface-light dark:bg-[#0d0d0d] z-20 shadow-[0_1px_2px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] border-b border-black/5 dark:border-white/5">
             <tr className="divide-x divide-black/5 dark:divide-white/5 uppercase text-[8px] md:text-[9px] font-black tracking-widest text-zinc-400">
               <th className="p-3 md:p-4 w-10 md:w-12 text-center">#</th>
               {keys.map((k: string) => {
@@ -1646,7 +1646,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
           </thead>
           <tbody>
             {activeItems.map((row: any, i: number) => (
-              <tr key={row.id} className="border-b border-black/5 dark:border-white/5 group transition-colors hover:bg-brand/[0.02]">
+              <tr key={row.id} className="border-b border-black/5 dark:border-white/5 group transition-colors hover:bg-brand/[0.02] h-[48px] md:h-[56px]">
                 <td className="p-3 md:p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center">{i+1}</td>
                 {keys.map((k: string) => {
                   let textColor = "text-slate-900 dark:text-white";
@@ -1680,7 +1680,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                           onChange={e => onEdit(row.id, k, e.target.value)} 
                           onPaste={onPaste} 
                           placeholder="..." 
-                          className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none min-h-[48px] md:min-h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
+                          className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none h-[48px] md:h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
                           rows={1} 
                         />
                       ) : (
@@ -1698,8 +1698,9 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                 })}
                 <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
                   <button 
-                    onClick={() => onDelete(row.id)} 
+                    onClick={() => { if (window.confirm("Are you sure you want to delete this row?")) onDelete(row.id); }} 
                     className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"
+                    title="Delete row"
                   >
                     <Trash2 size={16}/>
                   </button>
@@ -1733,12 +1734,12 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                   transition={{ duration: 0.3, ease: 'easeOut' }}
                   className="overflow-hidden bg-black/[0.02] dark:bg-white/[0.01]"
                 >
-                  <table className="w-full text-left border-collapse min-w-[450px] md:min-w-[500px]">
+                  <table className="w-full text-left border-collapse table-fixed min-w-[450px] md:min-w-[500px]">
                     <tbody>
                       {savedItems.map((row: any, i: number) => {
                         const isReadOnly = isLocked;
                         return (
-                          <tr key={row.id} className={`border-b border-black/5 dark:border-white/5 group transition-colors ${isReadOnly ? 'opacity-80' : 'hover:bg-brand/[0.02]'}`}>
+                          <tr key={row.id} className={`border-b border-black/5 dark:border-white/5 group transition-colors ${isReadOnly ? 'opacity-80' : 'hover:bg-brand/[0.02]'} h-[48px] md:h-[56px]`}>
                             <td className="p-3 md:p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center">{i+1}</td>
                             {keys.map((k: string) => {
                               let textColor = "text-slate-700 dark:text-zinc-400";
@@ -1783,8 +1784,9 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                             <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
                               {!isReadOnly ? (
                                 <button 
-                                  onClick={() => onDelete(row.id)} 
+                                  onClick={() => { if (window.confirm("Are you sure you want to delete this historical record?")) onDelete(row.id); }} 
                                   className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all flex items-center justify-center"
+                                  title="Delete historical record"
                                 >
                                   <Trash2 size={16}/>
                                 </button>
