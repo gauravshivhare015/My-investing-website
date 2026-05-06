@@ -705,7 +705,7 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
       onDragStart={(e) => !isEditing && onDragStart(e, id)}
       onDragOver={(e) => !isEditing && onDragOver(e, id)}
       onDrop={(e) => !isEditing && onDrop(e, id)}
-      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-5 transition-all hover:border-brand/30 group ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'}`}
+      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-5 transition-all hover:border-brand/30 group ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'} flex flex-col h-full`}
     >
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-2 max-w-[80%]">
@@ -713,36 +713,40 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
           <h4 className="text-sm font-bold text-slate-900 dark:text-white transition-colors truncate">{title || 'Untitled Prompt'}</h4>
         </div>
         {!isEditing && (
-          <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
+          <button onClick={handleCopy} className={`opacity-0 group-hover:opacity-100 p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
         )}
       </div>
-      <div className="bg-muted-light dark:bg-black/40 rounded-xl p-3 border border-black/5 dark:border-white/5 max-h-32 overflow-y-auto">
-        {isEditing ? (
-          <textarea
-            autoFocus
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleSave}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && e.ctrlKey) handleSave();
-              if (e.key === 'Escape') {
-                setIsEditing(false);
-                setEditValue(content);
-              }
-            }}
-            className="w-full bg-transparent text-xs text-zinc-500 font-mono resize-none focus:outline-none min-h-[80px]"
-          />
-        ) : (
-          <p 
-            className="text-xs text-zinc-500 leading-relaxed font-mono whitespace-pre-wrap select-text" 
-            onClick={(e) => { if (e.detail === 3) setIsEditing(true); }}
-            title="Triple-click to edit"
-          >
-            {content}
-          </p>
-        )}
+      <div className={`grid transition-all duration-300 ease-in-out ${isEditing ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 group-hover:grid-rows-[1fr] group-hover:opacity-100'}`}>
+        <div className="overflow-hidden">
+          <div className="bg-muted-light dark:bg-black/40 rounded-xl p-3 border border-black/5 dark:border-white/5 max-h-48 overflow-y-auto mt-2">
+            {isEditing ? (
+              <textarea
+                autoFocus
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleSave}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.ctrlKey) handleSave();
+                  if (e.key === 'Escape') {
+                    setIsEditing(false);
+                    setEditValue(content);
+                  }
+                }}
+                className="w-full bg-transparent text-xs text-zinc-500 font-mono resize-none focus:outline-none min-h-[80px]"
+              />
+            ) : (
+              <p 
+                className="text-xs text-zinc-500 leading-relaxed font-mono whitespace-pre-wrap select-text" 
+                onClick={(e) => { if (e.detail === 3) setIsEditing(true); }}
+                title="Triple-click to edit"
+              >
+                {content}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
