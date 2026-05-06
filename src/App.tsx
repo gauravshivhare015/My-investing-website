@@ -10,7 +10,7 @@ import {
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ShieldCheck, GripVertical
+  ChevronDown, ShieldCheck, GripVertical, Plus
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -1455,7 +1455,7 @@ export default function App() {
 
               <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id}><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} /></motion.div>))}</div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id}><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} /></motion.div>))}<motion.div layout><button onClick={() => setActiveTab('data')} className="h-full w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-black/10 dark:border-white/10 p-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex flex-col items-center justify-center gap-3 text-zinc-500 hover:text-brand cursor-pointer min-h-[160px]"><div className="p-3 bg-black/5 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={24} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setActiveTab('data')} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
               </div>
 
               <div id="documents" className="space-y-6 pb-10">
@@ -1478,11 +1478,20 @@ export default function App() {
                         </div>
                       </a>
                     ))}
+                    <button onClick={() => setActiveTab('data')} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-dashed border-black/10 dark:border-white/10 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/5 group flex items-center justify-center gap-4 cursor-pointer min-h-[90px]">
+                      <div className="flex items-center gap-3 text-zinc-500 group-hover:text-cyan-500 transition-colors">
+                        <Plus size={20} />
+                        <span className="text-sm font-bold tracking-tight">Add Document</span>
+                      </div>
+                    </button>
                   </div>
                 ) : (
                   <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center">
                     <File size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" />
                     <p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">No documents uploaded yet.</p>
+                    <button onClick={() => setActiveTab('data')} className="mt-6 px-6 py-2 bg-cyan-500 text-white font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2">
+                      <Plus size={16} /> Add Document
+                    </button>
                   </div>
                 )}
               </div>
@@ -1493,96 +1502,12 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'data' && !isUnlocked && (
-            <div className="flex flex-col items-center justify-center min-h-[50vh] animate-in fade-in zoom-in duration-500" role="form" aria-labelledby="pin-title">
-              <div className={`bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center transition-all ${pinError ? 'animate-shake border-rose-500/50' : ''}`}>
-                <div className="w-16 h-16 bg-brand/10 rounded-full flex items-center justify-center mb-6 border border-brand/20" aria-hidden="true">
-                  <Lock className="text-brand" size={28} />
-                </div>
-                <h2 id="pin-title" className="text-xl font-bold mb-2 tracking-tight">Restricted Access</h2>
-                <p id="pin-description" className="text-zinc-500 text-sm mb-8 text-center">Please enter your 4-digit PIN to unlock the data vault.</p>
-                <div className="w-full relative">
-                  <input 
-                    id="pin-input"
-                    type="password" 
-                    maxLength={4}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    aria-label="4-digit PIN"
-                    aria-invalid={pinError}
-                    aria-describedby={pinError ? "pin-error pin-description" : "pin-description"}
-                    aria-required="true"
-                    value={pinInput} 
-                    onChange={e => { 
-                      const val = e.target.value.replace(/\D/g,''); 
-                      setPinInput(val); 
-                      if (val === CORRECT_PIN) {
-                        setIsUnlocked(true);
-                      } else if (val.length === 4) { 
-                        setPinError(true); 
-                        setTimeout(()=>setPinError(false), 2000); 
-                        setPinInput(''); 
-                      } 
-                    }} 
-                    className={`w-full bg-white dark:bg-black border ${pinError ? 'border-rose-500' : 'border-black/10 dark:border-white/10'} text-center text-3xl py-5 rounded-xl focus:outline-none focus:border-brand tracking-[1em] transition-all font-mono`} 
-                    placeholder="••••" 
-                    autoFocus 
-                  />
-                  {pinError && (
-                    <div id="pin-error" role="alert" className="absolute -bottom-6 left-0 w-full text-center text-[10px] font-bold text-rose-500 uppercase tracking-widest animate-in fade-in slide-in-from-top-1">
-                      Incorrect PIN. Please try again.
-                    </div>
-                  )}
-                </div>
-              </div>
-              <style>{`@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } } .animate-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }`}</style>
-            </div>
-          )}
-
-          {activeTab === 'data' && isUnlocked && (
+          {activeTab === 'data' && (
             <div className="space-y-6 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8 items-start">
                 <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={(id: string) => deleteCloudDoc('transactions', id)} keys={['date','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
                 <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={(id: string) => deleteCloudDoc('history', id)} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
                 <Sheet title="Benchmark Sim" coll="benchmark" data={benchmarkHistory} onEdit={handleBmChange} onDelete={(id: string) => deleteCloudDoc('benchmark', id)} keys={['date','price']} onPaste={(e: any) => handlePaste(e,'benchmark',['date','price'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
-              </div>
-              <div className="border-t border-black/5 dark:border-white/5 pt-6 md:pt-10"><Sheet title="Prompts Repository" coll="prompts" data={prompts} onEdit={handlePromptChange} onDelete={(id: string) => deleteCloudDoc('prompts', id)} keys={['title','content']} onPaste={(e: any) => handlePaste(e,'prompts',['title','content'])} brandColor={brandColor} correctPin={CORRECT_PIN} /></div>
-              
-              <div className="border-t border-black/5 dark:border-white/5 pt-6 md:pt-10">
-                <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 p-6 shadow-2xl">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[10px] font-black tracking-[0.2em] text-zinc-500 uppercase">Document Upload</h3>
-                  </div>
-                  <label 
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDrop}
-                    className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${isDragging ? 'border-brand bg-brand/[0.05]' : 'border-black/10 dark:border-white/10 hover:bg-brand/[0.02] hover:border-brand/30'}`}
-                  >
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <UploadCloud className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-brand' : 'text-zinc-400 group-hover:text-brand'}`} />
-                      <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400"><span className="font-semibold text-slate-900 dark:text-white">Click to upload</span> or drag and drop</p>
-                      <p className="text-xs text-zinc-500">PDF, JPG or JPEG (MAX. 5MB)</p>
-                    </div>
-                    <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg" multiple onChange={handleFileUpload} />
-                  </label>
-                  
-                  {files.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      {files.map(f => (
-                        <div key={f.id} className="flex items-center justify-between p-3 bg-black/5 dark:bg-white/5 rounded-lg group/item transition-colors hover:bg-black/10 dark:hover:bg-white/10">
-                          <div className="flex items-center gap-3">
-                            {f.type.includes('pdf') ? <FileText size={16} className="text-rose-500"/> : <ImageIcon size={16} className="text-cyan-500"/>}
-                            <span className="text-xs font-medium text-slate-900 dark:text-white truncate max-w-[200px] md:max-w-[300px]">{f.name}</span>
-                          </div>
-                          <button onClick={() => deleteCloudDoc('files', f.id)} className="text-zinc-400 hover:text-rose-500 transition-colors p-1">
-                            <Trash2 size={14}/>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           )}
