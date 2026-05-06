@@ -674,8 +674,11 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
   );
 };
 
-const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, onDrop }: any) => {
+const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, onDrop, onEditContent }: any) => {
   const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(content);
+
   const handleCopy = () => {
     const textArea = document.createElement("textarea");
     textArea.value = content;
@@ -689,25 +692,57 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
     document.body.removeChild(textArea);
   };
 
+  const handleSave = () => {
+    setIsEditing(false);
+    if (onEditContent && editValue !== content) {
+      onEditContent(id, editValue);
+    }
+  };
+
   return (
     <div 
-      draggable
-      onDragStart={(e) => onDragStart(e, id)}
-      onDragOver={(e) => onDragOver(e, id)}
-      onDrop={(e) => onDrop(e, id)}
-      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-5 transition-all hover:border-brand/30 group cursor-grab active:cursor-grabbing`}
+      draggable={!isEditing}
+      onDragStart={(e) => !isEditing && onDragStart(e, id)}
+      onDragOver={(e) => !isEditing && onDragOver(e, id)}
+      onDrop={(e) => !isEditing && onDrop(e, id)}
+      className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border ${isDragging ? 'border-brand border-dashed opacity-50' : 'border-black/5 dark:border-white/5'} p-5 transition-all hover:border-brand/30 group ${isEditing ? '' : 'cursor-grab active:cursor-grabbing'}`}
     >
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-2 max-w-[80%]">
-          <div className="text-zinc-400 dark:text-zinc-600 cursor-grab active:cursor-grabbing"><GripVertical size={14} /></div>
+          <div className={`text-zinc-400 dark:text-zinc-600 ${isEditing ? 'opacity-50' : 'cursor-grab active:cursor-grabbing'}`}><GripVertical size={14} /></div>
           <h4 className="text-sm font-bold text-slate-900 dark:text-white transition-colors truncate">{title || 'Untitled Prompt'}</h4>
         </div>
-        <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-        </button>
+        {!isEditing && (
+          <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        )}
       </div>
       <div className="bg-muted-light dark:bg-black/40 rounded-xl p-3 border border-black/5 dark:border-white/5 max-h-32 overflow-y-auto">
-        <p className="text-xs text-zinc-500 leading-relaxed font-mono whitespace-pre-wrap">{content}</p>
+        {isEditing ? (
+          <textarea
+            autoFocus
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && e.ctrlKey) handleSave();
+              if (e.key === 'Escape') {
+                setIsEditing(false);
+                setEditValue(content);
+              }
+            }}
+            className="w-full bg-transparent text-xs text-zinc-500 font-mono resize-none focus:outline-none min-h-[80px]"
+          />
+        ) : (
+          <p 
+            className="text-xs text-zinc-500 leading-relaxed font-mono whitespace-pre-wrap select-text" 
+            onClick={(e) => { if (e.detail === 3) setIsEditing(true); }}
+            title="Triple-click to edit"
+          >
+            {content}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1040,6 +1075,11 @@ export default function App() {
       });
     }
     setDraggedPromptId(null);
+  };
+
+  const handlePromptContentEdit = (id: string, newContent: string) => {
+    setPrompts(prev => prev.map(p => p.id === id ? { ...p, content: newContent } : p));
+    updateCloudDoc('prompts', id, { content: newContent });
   };
 
   const handlePaste = async (e: any, collName: string, keys: string[]) => {
@@ -1415,7 +1455,7 @@ export default function App() {
 
               <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id}><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} /></motion.div>))}</div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id}><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} /></motion.div>))}</div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p></div>)}
               </div>
 
               <div id="documents" className="space-y-6 pb-10">
