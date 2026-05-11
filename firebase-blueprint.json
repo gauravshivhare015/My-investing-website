@@ -54,6 +54,19 @@
         "data": { "type": "string" },
         "uploadedAt": { "type": "number" }
       }
+    },
+    "Holding": {
+      "title": "Holding",
+      "description": "A stock holding",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "qty": { "type": "number" },
+        "avg": { "type": "number" },
+        "ltp": { "type": "number" },
+        "pClose": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -76,6 +89,10 @@
     "/artifacts/{appId}/users/{userId}/files/{fileId}": {
       "schema": { "$ref": "#/entities/File" },
       "description": "User uploaded files"
+    },
+    "/artifacts/{appId}/users/{userId}/holdings/{holdingId}": {
+      "schema": { "$ref": "#/entities/Holding" },
+      "description": "User stock holdings"
     }
   }
 }

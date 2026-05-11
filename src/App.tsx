@@ -893,15 +893,37 @@ const parseDDMMYYYYtoISO = (val: string) => {
   return trimmed;
 };
 
-const HoldingsTable = () => {
-  const [holdings, setHoldings] = useState([
-    { name: 'RELIANCE', qty: 25, avg: 2400.00, ltp: 2800.00, pClose: 2750.00 },
-    { name: 'ITC', qty: 100, avg: 400.50, ltp: 450.25, pClose: 440.00 },
-    { name: 'HDFCBANK', qty: 50, avg: 1600.00, ltp: 1550.00, pClose: 1560.00 },
-    { name: 'WIPRO', qty: 200, avg: 450.00, ltp: 440.00, pClose: 445.00 },
-  ]);
+const HoldingsTable = ({ user }: { user: any }) => {
+  const [holdings, setHoldings] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const path = `artifacts/${appId}/users/${user.uid}/holdings`;
+    const q = query(collection(db, path));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setHoldings(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const saveHoldingToFirestore = async (holding: any) => {
+    if (!user) return;
+    const holdingId = holding.id || `holding_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const path = `artifacts/${appId}/users/${user.uid}/holdings/${holdingId}`;
+    try {
+      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/holdings`, holdingId), {
+        ...holding,
+        id: holdingId
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  };
 
   const processImageWithGemini = async (base64Data: string, mimeType: string) => {
     setIsProcessing(true);
@@ -940,7 +962,9 @@ const HoldingsTable = () => {
       if (jsonStr) {
           const newHoldings = JSON.parse(jsonStr);
           if (newHoldings.length > 0) {
-             setHoldings(prev => [...prev, ...newHoldings]);
+             for (const h of newHoldings) {
+                await saveHoldingToFirestore(h);
+             }
           } else {
              alert("Could not detect any holdings in the provided image.");
           }
@@ -993,8 +1017,14 @@ const HoldingsTable = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleDeleteHolding = (nameToDelete: string) => {
-    setHoldings(prev => prev.filter(h => h.name !== nameToDelete));
+  const handleDeleteHolding = async (holding: any) => {
+    if (!user) return;
+    const path = `artifacts/${appId}/users/${user.uid}/holdings/${holding.id}`;
+    try {
+      await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/holdings`, holding.id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
   };
 
   const data = holdings.map(h => {
@@ -1061,7 +1091,7 @@ const HoldingsTable = () => {
                 <td className="p-3 md:p-4">
                   <div 
                     className="inline-flex items-center gap-2 font-bold text-slate-900 dark:text-white font-sans cursor-pointer hover:text-rose-500 transition-colors group"
-                    onClick={() => handleDeleteHolding(row.name)}
+                    onClick={() => handleDeleteHolding(row)}
                     title="Click to delete"
                   >
                     {row.name}
@@ -1753,7 +1783,7 @@ export default function App() {
               </div>
 
               <div id="holdings">
-                <HoldingsTable />
+                <HoldingsTable user={user} />
               </div>
 
               <div id="prompts" className="space-y-6 pb-10">
