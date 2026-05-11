@@ -10,7 +10,7 @@ import {
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ShieldCheck, GripVertical, Plus, Palette
+  ChevronDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -72,6 +72,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 // --- AI Imports ---
 import gsap from 'gsap';
+import { GoogleGenAI, Type } from "@google/genai";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -867,26 +868,230 @@ const formatDateToDDMMYYYY = (dateStr: string) => {
     const parts = dateStr.split(/[-/]/);
     if (parts.length === 3) {
       const [dPart, mPart, yPart] = parts;
-      if (dPart.length <= 2 && mPart.length <= 2 && yPart.length === 4) return `${dPart.padStart(2, '0')}-${mPart.padStart(2, '0')}-${yPart}`;
+      if (dPart.length <= 2 && mPart.length <= 2 && yPart.length === 4) return `${dPart.padStart(2, '0')}/${mPart.padStart(2, '0')}/${yPart}`;
     }
     return dateStr;
   }
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
-  return `${day}-${month}-${year}`;
+  return `${day}/${month}/${year}`;
 };
 
 const parseDDMMYYYYtoISO = (val: string) => {
   if (!val) return '';
-  const parts = val.split(/[-/]/);
+  const trimmed = val.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const parts = trimmed.split(/[-/]/);
   if (parts.length === 3) {
     let [d, m, y] = parts;
-    if (d && m && y && y.length === 4) {
-      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    if (d && m && y) {
+      if (y.length === 2) y = '20' + y;
+      if (y.length === 4) return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
     }
   }
-  return val;
+  return trimmed;
+};
+
+const HoldingsTable = () => {
+  const [holdings, setHoldings] = useState([
+    { name: 'RELIANCE', qty: 25, avg: 2400.00, ltp: 2800.00, pClose: 2750.00 },
+    { name: 'ITC', qty: 100, avg: 400.50, ltp: 450.25, pClose: 440.00 },
+    { name: 'HDFCBANK', qty: 50, avg: 1600.00, ltp: 1550.00, pClose: 1560.00 },
+    { name: 'WIPRO', qty: 200, avg: 450.00, ltp: 440.00, pClose: 445.00 },
+  ]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processImageWithGemini = async (base64Data: string, mimeType: string) => {
+    setIsProcessing(true);
+    try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("GEMINI_API_KEY is missing from environment variables.");
+      }
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+            {
+               inlineData: { data: base64Data.split(',')[1] || base64Data, mimeType }
+            },
+            "Extract the stock holdings from this image or text. For each holding, extract the stock name, quantity (number of shares), average price/investment price, last traded price (LTP) or current price, and previous close (if available; otherwise calculate based on day change or default to LTP)."
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING, description: "Stock symbol or name" },
+                qty: { type: Type.NUMBER, description: "Quantity of shares" },
+                avg: { type: Type.NUMBER, description: "Average price" },
+                ltp: { type: Type.NUMBER, description: "Last traded price" },
+                pClose: { type: Type.NUMBER, description: "Previous close price" }
+              },
+              required: ["name", "qty", "avg", "ltp", "pClose"]
+            }
+          }
+        }
+      });
+      const jsonStr = response.text;
+      if (jsonStr) {
+          const newHoldings = JSON.parse(jsonStr);
+          if (newHoldings.length > 0) {
+             setHoldings(prev => [...prev, ...newHoldings]);
+          } else {
+             alert("Could not detect any holdings in the provided image.");
+          }
+      }
+    } catch(err) {
+      console.error(err);
+      alert("Failed to extract data: " + (err as Error).message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const items = e.clipboardData.items;
+    let handled = false;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          handled = true;
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const dataUrl = event.target?.result as string;
+            processImageWithGemini(dataUrl, file.type);
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    }
+    if (!handled) {
+       const text = e.clipboardData.getData('Text');
+       if (text) {
+          // Send text to Gemini
+          processImageWithGemini(btoa(unescape(encodeURIComponent(text))), 'text/plain');
+       }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+       const reader = new FileReader();
+       reader.onload = (event) => {
+         const dataUrl = event.target?.result as string;
+         processImageWithGemini(dataUrl, file.type);
+       };
+       reader.readAsDataURL(file);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDeleteHolding = (nameToDelete: string) => {
+    setHoldings(prev => prev.filter(h => h.name !== nameToDelete));
+  };
+
+  const data = holdings.map(h => {
+    const inv = h.qty * h.avg;
+    const cur = h.qty * h.ltp;
+    const overallGlAbs = cur - inv;
+    const overallGlPct = (overallGlAbs / inv) * 100;
+    const dayGlAbs = h.qty * (h.ltp - h.pClose);
+    const dayGlPct = ((h.ltp - h.pClose) / h.pClose) * 100;
+
+    return { ...h, inv, cur, overallGlAbs, overallGlPct, dayGlAbs, dayGlPct };
+  }).sort((a, b) => b.overallGlPct - a.overallGlPct);
+
+  const formatAmt = (v: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(v);
+
+  return (
+    <div 
+      className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 md:p-6 overflow-hidden mt-6 border border-black/5 dark:border-white/5 shadow-2xl focus:outline-none focus:ring-2 focus:ring-brand/30"
+      onPaste={handlePaste}
+      tabIndex={0}
+    >
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+        <div>
+          <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs relative">
+            Holdings
+            {isProcessing && (
+               <span className="absolute -top-1 -right-4 w-2 h-2 rounded-full border border-brand border-t-transparent animate-spin ml-2"></span>
+            )}
+          </h3>
+          <p className="text-[8px] md:text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Current Portfolio Constituents</p>
+        </div>
+        <div className="flex items-center gap-3">
+           <button 
+             onClick={() => fileInputRef.current?.click()}
+             disabled={isProcessing}
+             className="px-3 py-1.5 md:px-4 md:py-2 text-[9px] md:text-[10px] font-bold tracking-widest uppercase rounded-lg border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 hover:border-brand/30 transition-all flex items-center gap-2 group disabled:opacity-50"
+             title="Upload screenshot or simply Ctrl+V / Cmd+V to paste"
+           >
+              <div className="p-1 rounded-sm bg-brand/10 text-brand">
+                 <Rocket size={12} className="group-hover:-translate-y-[1px] group-hover:translate-x-[1px] transition-transform" />
+              </div>
+              <span>{isProcessing ? 'Processing AI...' : 'Magic Import'}</span>
+           </button>
+           <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+        </div>
+      </div>
+      <div className="overflow-x-auto hide-scrollbar">
+        <table className="w-full text-left border-collapse min-w-[700px]">
+          <thead className="bg-black/5 dark:bg-white/5 border-b border-black/5 dark:border-white/5">
+            <tr className="uppercase text-[8px] md:text-[9px] font-black tracking-widest text-zinc-500">
+              <th className="p-3 md:p-4 rounded-tl-xl">Name</th>
+              <th className="p-3 md:p-4 text-right">Quantity</th>
+              <th className="p-3 md:p-4 text-right">Avg. Price</th>
+              <th className="p-3 md:p-4 text-right">LTP</th>
+              <th className="p-3 md:p-4 text-right">Inv. Amt.</th>
+              <th className="p-3 md:p-4 text-right">Current Val.</th>
+              <th className="p-3 md:p-4 text-right">Overall G/L</th>
+              <th className="p-3 md:p-4 text-right rounded-tr-xl">Day's G/L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((row, i) => (
+              <tr key={row.name} className="border-b border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors text-[10px] md:text-[11px] font-mono">
+                <td className="p-3 md:p-4">
+                  <div 
+                    className="inline-flex items-center gap-2 font-bold text-slate-900 dark:text-white font-sans cursor-pointer hover:text-rose-500 transition-colors group"
+                    onClick={() => handleDeleteHolding(row.name)}
+                    title="Click to delete"
+                  >
+                    {row.name}
+                    <Trash2 size={12} className="opacity-0 group-hover:opacity-100 text-rose-500 transition-opacity" />
+                  </div>
+                </td>
+                <td className="p-3 md:p-4 text-right text-zinc-600 dark:text-zinc-400">{row.qty}</td>
+                <td className="p-3 md:p-4 text-right text-zinc-600 dark:text-zinc-400">{formatAmt(row.avg)}</td>
+                <td className="p-3 md:p-4 text-right text-slate-900 dark:text-white font-medium">{formatAmt(row.ltp)}</td>
+                <td className="p-3 md:p-4 text-right text-zinc-600 dark:text-zinc-400">{formatAmt(row.inv)}</td>
+                <td className="p-3 md:p-4 text-right text-slate-900 dark:text-white font-medium">{formatAmt(row.cur)}</td>
+                <td className="p-3 md:p-4 text-right">
+                  <div className={`flex flex-col items-end ${row.overallGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    <span className="font-bold">{row.overallGlAbs >= 0 ? '🟢' : '🔴'} {formatAmt(row.overallGlAbs)}</span>
+                    <span className="text-[9px] opacity-80">{row.overallGlPct > 0 ? '+' : ''}{row.overallGlPct.toFixed(2)}%</span>
+                  </div>
+                </td>
+                <td className="p-3 md:p-4 text-right">
+                  <div className={`flex flex-col items-end ${row.dayGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    <span className="font-bold">{row.dayGlAbs >= 0 ? '🟢' : '🔴'} {formatAmt(row.dayGlAbs)}</span>
+                    <span className="text-[9px] opacity-80">{row.dayGlPct > 0 ? '+' : ''}{row.dayGlPct.toFixed(2)}%</span>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 };
 
 export default function App() {
@@ -993,17 +1198,17 @@ export default function App() {
     const unsubTxns = onSnapshot(txnsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setTransactions([...sorted, { id: generateId(), date: '', deposit: '', withdrawal: '' }]);
+      setTransactions([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], deposit: '', withdrawal: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, txnsPath.path));
     const unsubHist = onSnapshot(histPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setPortfolioHistory([...sorted, { id: generateId(), date: '', marketValue: '' }]);
+      setPortfolioHistory([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], marketValue: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, histPath.path));
     const unsubBench = onSnapshot(benchPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setBenchmarkHistory([...sorted, { id: generateId(), date: '', price: '' }]);
+      setBenchmarkHistory([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], price: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, benchPath.path));
     const unsubPrompts = onSnapshot(promptsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
@@ -1064,6 +1269,15 @@ export default function App() {
     setTransactions(prev => prev.map(t => t.id === id ? updated : t));
     if (updated.date && (updated.deposit !== '' || updated.withdrawal !== '')) updateCloudDoc('transactions', id, updated);
   };
+  const handleTxnDelete = (id: string) => {
+    setTransactions(prev => {
+      const next = prev.filter(t => t.id !== id);
+      const hasEmpty = next.some(t => t.deposit === '' && t.withdrawal === '');
+      if (!hasEmpty) next.push({ id: generateId(), date: new Date().toISOString().split('T')[0], deposit: '', withdrawal: '' });
+      return next;
+    });
+    deleteCloudDoc('transactions', id);
+  };
   const handleMvChange = (id: string, field: string, value: any) => {
     const row = portfolioHistory.find(p => p.id === id);
     if (!row) return;
@@ -1071,12 +1285,30 @@ export default function App() {
     setPortfolioHistory(prev => prev.map(p => p.id === id ? updated : p));
     if (updated.date && updated.marketValue !== '') updateCloudDoc('history', id, updated);
   };
+  const handleMvDelete = (id: string) => {
+    setPortfolioHistory(prev => {
+      const next = prev.filter(p => p.id !== id);
+      const hasEmpty = next.some(p => p.marketValue === '');
+      if (!hasEmpty) next.push({ id: generateId(), date: new Date().toISOString().split('T')[0], marketValue: '' });
+      return next;
+    });
+    deleteCloudDoc('history', id);
+  };
   const handleBmChange = (id: string, field: string, value: any) => {
     const row = benchmarkHistory.find(b => b.id === id);
     if (!row) return;
     const updated = { ...row, [field]: value };
     setBenchmarkHistory(prev => prev.map(b => b.id === id ? updated : b));
     if (updated.date && updated.price !== '') updateCloudDoc('benchmark', id, updated);
+  };
+  const handleBmDelete = (id: string) => {
+    setBenchmarkHistory(prev => {
+      const next = prev.filter(b => b.id !== id);
+      const hasEmpty = next.some(b => b.price === '');
+      if (!hasEmpty) next.push({ id: generateId(), date: new Date().toISOString().split('T')[0], price: '' });
+      return next;
+    });
+    deleteCloudDoc('benchmark', id);
   };
   const handlePromptChange = (id: string, field: string, value: any) => {
     const row = prompts.find(p => p.id === id);
@@ -1142,29 +1374,30 @@ export default function App() {
   };
 
   const handlePromptDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this prompt?')) {
-      setPrompts(prev => prev.filter(p => p.id !== id));
-      deleteCloudDoc('prompts', id);
-    }
+    setPrompts(prev => prev.filter(p => p.id !== id));
+    deleteCloudDoc('prompts', id);
   };
 
   const handlePaste = async (e: any, collName: string, keys: string[]) => {
     const pastedData = (e.clipboardData || (window as any).clipboardData).getData('Text');
-    if (!pastedData || !pastedData.includes('\t')) return;
+    if (!pastedData) return;
+    if (!pastedData.includes('\t') && !pastedData.includes('\n')) return;
     e.preventDefault();
     const rows = pastedData.trim().split('\n');
     for (const row of rows) {
       const cols = row.split('\t').map((c: string) => c.trim());
-      if (cols.length >= keys.length) {
+      if (cols.some((c: string) => c.length > 0)) {
         const id = generateId();
         const data: any = { id };
         keys.forEach((key, i) => {
-          if (key === 'date') {
-            const dp = cols[i].split(/[-/]/);
-            if (dp.length === 3) data[key] = `${dp[2].length===2?'20'+dp[2]:dp[2]}-${dp[1].padStart(2,'0')}-${dp[0].padStart(2,'0')}`;
-            else data[key] = cols[i];
-          } else if (key === 'title' || key === 'content') data[key] = cols[i];
-          else data[key] = cols[i] ? parseFloat(cols[i].replace(/[^0-9.-]+/g, "")) : "";
+          if (cols[i] !== undefined && cols[i] !== '') {
+            if (key === 'date') data[key] = parseDDMMYYYYtoISO(cols[i]);
+            else if (key === 'title' || key === 'content') data[key] = cols[i];
+            else {
+              const num = parseFloat(cols[i].replace(/[^0-9.-]+/g, ""));
+              data[key] = isNaN(num) ? "" : num;
+            }
+          }
         });
         await updateCloudDoc(collName, id, data);
       }
@@ -1519,6 +1752,10 @@ export default function App() {
                 <NetSavingsChart transactions={validTxns} isDarkMode={isDarkMode} brandColor={brandColor} />
               </div>
 
+              <div id="holdings">
+                <HoldingsTable />
+              </div>
+
               <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-black/5 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand/30 transition-all placeholder:text-zinc-400 dark:text-zinc-600" /></div></div>
                 {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-black/10 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-zinc-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-black/5 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" /><p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
@@ -1578,9 +1815,9 @@ export default function App() {
           {activeTab === 'data' && (
             <div className="space-y-6 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8 items-start">
-                <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={(id: string) => deleteCloudDoc('transactions', id)} keys={['date','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
-                <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={(id: string) => deleteCloudDoc('history', id)} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
-                <Sheet title="Benchmark Sim" coll="benchmark" data={benchmarkHistory} onEdit={handleBmChange} onDelete={(id: string) => deleteCloudDoc('benchmark', id)} keys={['date','price']} onPaste={(e: any) => handlePaste(e,'benchmark',['date','price'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
+                <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
+                <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
+                <Sheet title="Benchmark Sim" coll="benchmark" data={benchmarkHistory} onEdit={handleBmChange} onDelete={handleBmDelete} keys={['date','price']} onPaste={(e: any) => handlePaste(e,'benchmark',['date','price'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
               </div>
             </div>
           )}
@@ -1652,11 +1889,11 @@ export default function App() {
 
 function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, correctPin }: any) {
   const [isLocked, setIsLocked] = useState(true);
-  const [showPinInput, setShowPinInput] = useState(false);
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showPasteArea, setShowPasteArea] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1669,35 +1906,82 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleUnlock = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin === correctPin) {
-      setIsLocked(false);
-      setShowPinInput(false);
-      setPin('');
-      setError(false);
-      setShowDropdown(false);
-    } else {
-      setError(true);
-      setPin('');
-      setTimeout(() => setError(false), 500);
-    }
-  };
-
   const handleLock = () => {
     setIsLocked(true);
     setShowDropdown(false);
   };
 
-  const savedItems = data.filter((row: any) => !!row.id && (row.date || row.title || row.content));
-  const activeItems = data.filter((row: any) => !(!!row.id && (row.date || row.title || row.content)));
+  const savedItems = data.filter((row: any) => !!row.id && (row.title || row.content || (row.deposit !== '' && row.deposit !== undefined) || (row.withdrawal !== '' && row.withdrawal !== undefined) || (row.marketValue !== '' && row.marketValue !== undefined) || (row.price !== '' && row.price !== undefined)));
+  const activeItems = data.filter((row: any) => !!row.id && !savedItems.includes(row));
+
+  const selectableItems = [...savedItems, ...activeItems].filter(item => item.id);
+
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Avoid triggering any other row clicks
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkDeleteConfirm = () => {
+    selectedIds.forEach(id => onDelete(id));
+    setSelectedIds([]);
+    setIsConfirmModalOpen(false);
+  };
+
+  const handleSheetCopy = () => {
+    let tsv = "";
+    for (const row of [...savedItems, ...activeItems]) {
+      const cols = keys.map((k: string) => {
+        if (k === 'date' && row[k]) return formatDateToDDMMYYYY(row[k]);
+        return row[k] || '';
+      });
+      if (cols.some((c: any) => c !== '')) {
+         if (tsv) tsv += "\n";
+         tsv += cols.join("\t");
+      }
+    }
+    if (tsv) {
+      navigator.clipboard.writeText(tsv);
+      setShowDropdown(false);
+    }
+  };
+
+  const handleSheetPaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const mockEvent = {
+         preventDefault: () => {},
+         clipboardData: { getData: () => text }
+      };
+      onPaste(mockEvent);
+      setShowDropdown(false);
+    } catch (e) {
+      console.error(e);
+      setShowPasteArea(true);
+      setShowDropdown(false);
+    }
+  };
 
   return (
     <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 flex flex-col shadow-2xl relative transition-all duration-300">
       <div className="p-3 md:p-4 border-b border-black/5 dark:border-white/5 bg-muted-light/20 flex justify-between items-center uppercase text-[9px] md:text-[10px] font-black tracking-[0.2em] text-zinc-500 shrink-0">
-        <div className="flex items-center gap-2">
-          {title}
-          {isLocked && <Lock size={12} className="text-zinc-500/50" />}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            {title}
+            {isLocked && <Lock size={12} className="text-zinc-500/50" />}
+          </div>
+          
+          <button
+            disabled={selectedIds.length === 0}
+            onClick={() => setIsConfirmModalOpen(true)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${selectedIds.length > 0 ? 'bg-rose-500/10 border-rose-500/20 text-rose-500 hover:bg-rose-500/20 active:scale-95 shadow-lg shadow-rose-500/10' : 'bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-zinc-500 opacity-20 cursor-not-allowed'}`}
+          >
+            <Trash2 size={12} />
+            <span className="text-[8px] font-bold tracking-widest">
+              {selectedIds.length > 0 ? `DELETE (${selectedIds.length})` : 'BULK DELETE'}
+            </span>
+          </button>
         </div>
         
         <div className="relative" ref={dropdownRef}>
@@ -1720,7 +2004,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                   LOCK RECORDS {isLocked && <Check size={12} />}
                 </button>
                 <button 
-                  onClick={() => { if(isLocked) setShowPinInput(true); setShowDropdown(false); }}
+                  onClick={() => { if(isLocked) setIsLocked(false); setShowDropdown(false); }}
                   disabled={!isLocked}
                   className={`w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between transition-colors ${!isLocked ? 'text-brand bg-brand/5' : 'text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5'}`}
                 >
@@ -1732,28 +2016,30 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
         </div>
       </div>
 
-      {showPinInput && (
+      {showPasteArea && (
         <div className="absolute inset-0 z-30 bg-surface-light/90 dark:bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <form onSubmit={handleUnlock} className={`bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-xs flex flex-col items-center transition-all ${error ? 'animate-shake border-rose-500/50' : 'shadow-2xl'}`}>
-            <div className="w-12 h-12 bg-brand/10 rounded-full flex items-center justify-center mb-4 border border-brand/20">
-              <Lock className="text-brand" size={20} />
-            </div>
-            <h4 className="text-sm font-bold mb-1 tracking-tight">Sheet Locked</h4>
-            <p className="text-[10px] text-zinc-500 mb-6 text-center">Verify PIN to enable modifications.</p>
-            <input 
-              type="password" 
-              maxLength={4}
+          <div className="bg-surface-light dark:bg-[#0d0d0d] p-6 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col shadow-2xl relative">
+            <button onClick={() => setShowPasteArea(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-slate-900 dark:hover:text-white transition-colors">
+              ✕
+            </button>
+            <h4 className="text-sm font-bold mb-2 tracking-tight">Paste Data Manually</h4>
+            <p className="text-[10px] text-zinc-500 mb-4">Browser blocked clipboard access securely. Paste your tabular data here.</p>
+            <textarea 
               autoFocus
-              value={pin}
-              onChange={e => setPin(e.target.value.replace(/\D/g,''))}
-              placeholder="••••"
-              className={`w-full bg-surface-light dark:bg-black border ${error ? 'border-rose-500' : 'border-black/10 dark:border-white/10'} text-center text-2xl py-4 rounded-xl focus:outline-none focus:border-brand tracking-[0.5em] transition-all font-mono mb-4`}
+              className="w-full bg-white dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10 p-3 rounded-xl focus:outline-none focus:border-brand transition-all font-mono text-[10px] mb-4 h-32 resize-none placeholder:text-zinc-500 text-slate-900 dark:text-white"
+              placeholder="Cmd+V / Ctrl+V here..."
+              onChange={(e) => {
+                const text = e.target.value;
+                if (!text) return;
+                const mockEvent = {
+                   preventDefault: () => {},
+                   clipboardData: { getData: () => text }
+                };
+                onPaste(mockEvent);
+                setShowPasteArea(false);
+              }}
             />
-            <div className="flex gap-2 w-full">
-              <button type="button" onClick={() => setShowPinInput(false)} className="flex-1 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors text-center">Cancel</button>
-              <button type="submit" className="flex-1 py-2 text-[10px] font-bold uppercase tracking-widest bg-brand text-white dark:text-black rounded-lg transition-all hover:opacity-90">Verify</button>
-            </div>
-          </form>
+          </div>
         </div>
       )}
 
@@ -1761,181 +2047,271 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
         <table className="w-full text-[11px] md:text-xs text-left border-collapse table-fixed min-w-[450px] md:min-w-[500px]">
           <thead className="sticky top-0 bg-surface-light dark:bg-[#0d0d0d] z-20 shadow-[0_1px_2px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] border-b border-black/5 dark:border-white/5">
             <tr className="divide-x divide-black/5 dark:divide-white/5 uppercase text-[8px] md:text-[9px] font-black tracking-widest text-zinc-400">
-              <th className="p-3 md:p-4 w-10 md:w-12 text-center">#</th>
+              <th className="p-3 md:p-4 w-10 md:w-12 text-center bg-surface-light dark:bg-[#0d0d0d]">#</th>
               {keys.map((k: string) => {
                 let colorClass = "";
                 if (k === 'deposit') colorClass = "text-emerald-500 bg-emerald-500/5";
                 else if (k === 'withdrawal') colorClass = "text-rose-500 bg-rose-500/5";
                 else if (k === 'marketValue' || k === 'price') colorClass = "text-brand bg-brand/5";
                 
-                return <th key={k} className={`p-3 md:p-4 ${colorClass}`}>{k}</th>;
+                return <th key={k} className={`p-3 md:p-4 bg-surface-light dark:bg-[#0d0d0d] ${colorClass}`}>{k}</th>;
               })}
-              <th className="p-3 md:p-4 w-12 md:w-14"></th>
+              <th className="p-3 md:p-4 w-12 md:w-14 bg-surface-light dark:bg-[#0d0d0d]"></th>
             </tr>
           </thead>
           <tbody>
-            {activeItems.map((row: any, i: number) => (
-              <tr key={row.id} className="border-b border-black/5 dark:border-white/5 group transition-colors hover:bg-brand/[0.02] h-[48px] md:h-[56px]">
-                <td className="p-3 md:p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center">{i+1}</td>
-                {keys.map((k: string) => {
-                  let textColor = "text-slate-900 dark:text-white";
-                  let focusColor = "focus:bg-brand/[0.05]";
-                  
-                  if (k === 'deposit') {
-                    textColor = "text-emerald-600 dark:text-emerald-400";
-                    focusColor = "focus:bg-emerald-500/10";
-                  } else if (k === 'withdrawal') {
-                    textColor = "text-rose-600 dark:text-rose-400";
-                    focusColor = "focus:bg-rose-500/10";
-                  } else if (k === 'marketValue' || k === 'price') {
-                    textColor = "text-brand";
-                    focusColor = "focus:bg-brand/10";
-                  }
-
-                  return (
-                    <td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">
-                      {k === 'date' ? (
-                        <input 
-                          type="text"
-                          value={formatDateToDDMMYYYY(row[k])} 
-                          placeholder="DD-MM-YYYY"
-                          onPaste={onPaste} 
-                          onChange={e => onEdit(row.id, k, parseDDMMYYYYtoISO(e.target.value))} 
-                          className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
-                        />
-                      ) : k === 'content' ? (
-                        <textarea 
-                          value={row[k] || ''} 
-                          onChange={e => onEdit(row.id, k, e.target.value)} 
-                          onPaste={onPaste} 
-                          placeholder="..." 
-                          className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none h-[48px] md:h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
-                          rows={1} 
-                        />
-                      ) : (
-                        <input 
-                          type={k === 'title' ? 'text' : 'number'} 
-                          value={row[k] === undefined ? '' : row[k]} 
-                          onPaste={onPaste} 
-                          onChange={e => onEdit(row.id, k, e.target.value)} 
-                          placeholder="0.00" 
-                          className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
-                        />
-                      )}
-                    </td>
-                  );
-                })}
-                <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
-                  <button 
-                    onClick={() => { if (window.confirm("Are you sure you want to delete this row?")) onDelete(row.id); }} 
-                    className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"
-                    title="Delete row"
+            {activeItems.map((row: any, i: number) => {
+              const isSelected = selectedIds.includes(row.id);
+              return (
+                <tr key={row.id} className={`border-b border-black/5 dark:border-white/5 group transition-colors h-[48px] md:h-[56px] ${isSelected ? 'bg-brand/[0.04]' : 'hover:bg-brand/[0.02]'}`}>
+                  <td 
+                    onClick={(e) => toggleSelect(row.id, e)}
+                    className={`p-3 md:p-4 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center cursor-pointer transition-all ${isSelected ? 'bg-brand text-white font-bold' : 'text-zinc-400 dark:text-zinc-600 hover:bg-brand/10 hover:text-brand'}`}
+                    title="Click to select for bulk action"
                   >
-                    <Trash2 size={16}/>
-                  </button>
+                    {i+1}
+                  </td>
+                  {keys.map((k: string) => {
+                    let textColor = "text-slate-900 dark:text-white";
+                    let focusColor = "focus:bg-brand/[0.05]";
+                    
+                    if (k === 'deposit') {
+                      textColor = "text-emerald-600 dark:text-emerald-400";
+                      focusColor = "focus:bg-emerald-500/10";
+                    } else if (k === 'withdrawal') {
+                      textColor = "text-rose-600 dark:text-rose-400";
+                      focusColor = "focus:bg-rose-500/10";
+                    } else if (k === 'marketValue' || k === 'price') {
+                      textColor = "text-brand";
+                      focusColor = "focus:bg-brand/10";
+                    }
+
+                    return (
+                      <td key={k} className="p-0 border-l border-black/5 dark:border-white/5 relative">
+                        {k === 'date' ? (
+                          <input 
+                            type="date"
+                            value={row[k] || ''} 
+                            onPaste={(e) => {
+                               const text = e.clipboardData.getData('Text');
+                               if (text && !text.includes('\t') && !text.includes('\n')) {
+                                  const parsed = parseDDMMYYYYtoISO(text);
+                                  if (parsed) {
+                                     e.preventDefault();
+                                     onEdit(row.id, k, parsed);
+                                  }
+                               } else {
+                                  onPaste(e);
+                               }
+                            }} 
+                            onChange={e => onEdit(row.id, k, e.target.value)} 
+                            className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600 [color-scheme:light] dark:[color-scheme:dark]`} 
+                          />
+                        ) : k === 'content' ? (
+                          <textarea 
+                            value={row[k] || ''} 
+                            onChange={e => onEdit(row.id, k, e.target.value)} 
+                            onPaste={onPaste} 
+                            placeholder="..." 
+                            className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none h-[48px] md:h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
+                            rows={1} 
+                          />
+                        ) : (
+                          <input 
+                            type={k === 'title' ? 'text' : 'number'} 
+                            value={row[k] === undefined ? '' : row[k]} 
+                            onPaste={(e) => {
+                               const text = e.clipboardData.getData('Text');
+                               if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title') {
+                                  const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
+                                  if (!isNaN(parsed)) {
+                                     e.preventDefault();
+                                     onEdit(row.id, k, parsed);
+                                  }
+                               } else {
+                                  onPaste(e);
+                               }
+                            }}
+                            onChange={e => onEdit(row.id, k, e.target.value)} 
+                            placeholder="0.00" 
+                            className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
+                          />
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
+                    <button 
+                      onClick={() => onDelete(row.id)} 
+                      className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"
+                      title="Delete row"
+                    >
+                      <Trash2 size={16}/>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+
+          {savedItems.length > 0 && (
+            <tbody className="border-t border-black/5 dark:border-white/5 relative z-10">
+              <tr 
+                onClick={() => setIsHistoryOpen(!isHistoryOpen)} 
+                className={`cursor-pointer transition-all ${isHistoryOpen ? 'bg-black/5 dark:bg-white/[0.03]' : 'bg-transparent hover:bg-black/5 dark:hover:bg-white/[0.02]'}`}
+              >
+                <td colSpan={keys.length + 2} className="p-0">
+                  <div className="w-full p-4 flex items-center justify-between group">
+                    <div className="flex items-center gap-3">
+                      <div className="p-1.5 rounded-md bg-brand/10 text-brand">
+                        <Database size={14} />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Historical Records ({savedItems.length})</span>
+                    </div>
+                    <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-300 ${isHistoryOpen ? 'rotate-180' : ''}`} />
+                  </div>
                 </td>
               </tr>
-            ))}
-          </tbody>
+            </tbody>
+          )}
+
+          {savedItems.length > 0 && isHistoryOpen && (
+            <tbody className="bg-black/[0.02] dark:bg-white/[0.01]">
+              {savedItems.map((row: any, i: number) => {
+                const isReadOnly = isLocked;
+                const isSelected = selectedIds.includes(row.id);
+                return (
+                  <tr key={row.id} className={`border-b border-black/5 dark:border-white/5 group transition-colors ${isReadOnly ? 'opacity-80' : isSelected ? 'bg-brand/[0.04]' : 'hover:bg-brand/[0.02]'} h-[48px] md:h-[56px]`}>
+                    <td 
+                      onClick={(e) => !isReadOnly && toggleSelect(row.id, e)}
+                      className={`p-3 md:p-4 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center transition-all ${!isReadOnly && isSelected ? 'bg-brand text-white font-bold cursor-pointer' : !isReadOnly ? 'text-zinc-400 dark:text-zinc-600 hover:bg-brand/10 hover:text-brand cursor-pointer' : 'text-zinc-400 dark:text-zinc-600'}`}
+                      title={!isReadOnly ? "Click to select" : ""}
+                    >
+                      {i+1}
+                    </td>
+                    {keys.map((k: string) => {
+                      let textColor = "text-slate-700 dark:text-zinc-400";
+                      if (k === 'deposit') textColor = "text-emerald-600 dark:text-emerald-400";
+                      else if (k === 'withdrawal') textColor = "text-rose-600 dark:text-rose-400";
+                      else if (k === 'marketValue' || k === 'price') textColor = "text-brand";
+
+                      return (
+                        <td key={k} className="p-3 md:p-4 border-l border-black/5 dark:border-white/5">
+                          {isReadOnly ? (
+                            <div className={`${textColor} font-mono text-[10px] md:text-[11px] select-none italic truncate max-w-[200px]`}>
+                              {k === 'date' ? (row[k] ? formatDateToDDMMYYYY(row[k]) : '—') : (row[k] || '—')}
+                            </div>
+                          ) : (
+                            k === 'date' ? (
+                              <input 
+                                type="date" 
+                                value={row[k] || ''} 
+                                onPaste={(e) => {
+                                   const text = e.clipboardData.getData('Text');
+                                   if (text && !text.includes('\t') && !text.includes('\n')) {
+                                      const parsed = parseDDMMYYYYtoISO(text);
+                                      if (parsed) {
+                                         e.preventDefault();
+                                         onEdit(row.id, k, parsed);
+                                      }
+                                   } else {
+                                      onPaste(e);
+                                   }
+                                }} 
+                                onChange={e => onEdit(row.id, k, e.target.value)} 
+                                className={`w-full bg-transparent outline-none focus:bg-brand/[0.05] ${textColor} transition-colors font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 [color-scheme:light] dark:[color-scheme:dark]`} 
+                              />
+                            ) : k === 'content' ? (
+                              <textarea 
+                                value={row[k] || ''} 
+                                onChange={e => onEdit(row.id, k, e.target.value)} 
+                                onPaste={onPaste} 
+                                className="w-full bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600" 
+                                rows={1} 
+                              />
+                            ) : (
+                              <input 
+                                type={k === 'title' ? 'text' : 'number'} 
+                                value={row[k] === undefined ? '' : row[k]} 
+                                onPaste={(e) => {
+                                   const text = e.clipboardData.getData('Text');
+                                   if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title') {
+                                      const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
+                                      if (!isNaN(parsed)) {
+                                         e.preventDefault();
+                                         onEdit(row.id, k, parsed);
+                                      }
+                                   } else {
+                                      onPaste(e);
+                                   }
+                                }}
+                                onChange={e => onEdit(row.id, k, e.target.value)} 
+                                className={`w-full bg-transparent outline-none focus:bg-brand/[0.05] ${textColor} transition-colors font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600`} 
+                              />
+                            )
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
+                      {!isReadOnly ? (
+                        <button 
+                          onClick={() => onDelete(row.id)} 
+                          className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all flex items-center justify-center"
+                          title="Delete historical record"
+                        >
+                          <Trash2 size={16}/>
+                        </button>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-500/20">
+                          <Lock size={12}/>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          )}
         </table>
-
-        {savedItems.length > 0 && (
-          <div className="mt-2 border-t border-black/5 dark:border-white/5">
-            <button 
-              onClick={() => setIsHistoryOpen(!isHistoryOpen)} 
-              className={`w-full p-4 flex items-center justify-between group transition-all ${isHistoryOpen ? 'bg-black/5 dark:bg-white/[0.03]' : 'bg-transparent hover:bg-black/5 dark:hover:bg-white/[0.02]'}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-1.5 rounded-md bg-brand/10 text-brand">
-                  <Database size={14} />
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Historical Records ({savedItems.length})</span>
-              </div>
-              <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-300 ${isHistoryOpen ? 'rotate-180' : ''}`} />
-            </button>
-            
-            <AnimatePresence>
-              {isHistoryOpen && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
-                  className="overflow-hidden bg-black/[0.02] dark:bg-white/[0.01]"
-                >
-                  <table className="w-full text-left border-collapse table-fixed min-w-[450px] md:min-w-[500px]">
-                    <tbody>
-                      {savedItems.map((row: any, i: number) => {
-                        const isReadOnly = isLocked;
-                        return (
-                          <tr key={row.id} className={`border-b border-black/5 dark:border-white/5 group transition-colors ${isReadOnly ? 'opacity-80' : 'hover:bg-brand/[0.02]'} h-[48px] md:h-[56px]`}>
-                            <td className="p-3 md:p-4 text-zinc-400 dark:text-zinc-600 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center">{i+1}</td>
-                            {keys.map((k: string) => {
-                              let textColor = "text-slate-700 dark:text-zinc-400";
-                              if (k === 'deposit') textColor = "text-emerald-600 dark:text-emerald-400";
-                              else if (k === 'withdrawal') textColor = "text-rose-600 dark:text-rose-400";
-                              else if (k === 'marketValue' || k === 'price') textColor = "text-brand";
-
-                              return (
-                                <td key={k} className="p-3 md:p-4 border-l border-black/5 dark:border-white/5">
-                                  {isReadOnly ? (
-                                    <div className={`${textColor} font-mono text-[10px] md:text-[11px] select-none italic truncate max-w-[200px]`}>
-                                      {k === 'date' ? formatDateToDDMMYYYY(row[k]) : (row[k] || '—')}
-                                    </div>
-                                  ) : (
-                                    k === 'date' ? (
-                                      <input 
-                                        type="text" 
-                                        value={formatDateToDDMMYYYY(row[k])} 
-                                        onChange={e => onEdit(row.id, k, parseDDMMYYYYtoISO(e.target.value))} 
-                                        placeholder="DD-MM-YYYY"
-                                        className={`w-full bg-transparent outline-none focus:bg-brand/[0.05] ${textColor} transition-colors font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600`} 
-                                      />
-                                    ) : k === 'content' ? (
-                                      <textarea 
-                                        value={row[k] || ''} 
-                                        onChange={e => onEdit(row.id, k, e.target.value)} 
-                                        className="w-full bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600" 
-                                        rows={1} 
-                                      />
-                                    ) : (
-                                      <input 
-                                        type={k === 'title' ? 'text' : 'number'} 
-                                        value={row[k] === undefined ? '' : row[k]} 
-                                        onChange={e => onEdit(row.id, k, e.target.value)} 
-                                        className={`w-full bg-transparent outline-none focus:bg-brand/[0.05] ${textColor} transition-colors font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600`} 
-                                      />
-                                    )
-                                  )}
-                                </td>
-                              );
-                            })}
-                            <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
-                              {!isReadOnly ? (
-                                <button 
-                                  onClick={() => { if (window.confirm("Are you sure you want to delete this historical record?")) onDelete(row.id); }} 
-                                  className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all flex items-center justify-center"
-                                  title="Delete historical record"
-                                >
-                                  <Trash2 size={16}/>
-                                </button>
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-zinc-500/20">
-                                  <Lock size={12}/>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
       </div>
+
+      <AnimatePresence>
+        {isConfirmModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/10 dark:border-white/10 w-full max-w-sm p-6 shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">Delete Items</h3>
+              <p className="text-zinc-500 text-xs mb-6 leading-relaxed">
+                Are you sure you want to delete the <span className="text-rose-500 font-bold">{selectedIds.length}</span> selected items? This action is permanent and cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setIsConfirmModalOpen(false)}
+                  className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkDeleteConfirm}
+                  className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-rose-500 text-white hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20 active:scale-95"
+                >
+                  Confirm Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
