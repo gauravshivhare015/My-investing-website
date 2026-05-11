@@ -1308,7 +1308,7 @@ export default function App() {
 
   if (authError) {
     return (
-      <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center">
+      <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-background-light dark:bg-[#050505] flex items-center justify-center">
         <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
         <div className="relative z-10 bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-sm:mx-4 max-w-sm flex flex-col items-center shadow-2xl text-center">
           <AnimatedLogo brandColor={brandColor} />
@@ -1336,7 +1336,7 @@ export default function App() {
 
   if (loadingAuth) {
     return (
-      <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center">
+      <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-background-light dark:bg-[#050505] flex items-center justify-center">
         <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
         <div className="relative z-10 flex flex-col items-center">
           <AnimatedLogo brandColor={brandColor} />
@@ -1348,7 +1348,7 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] flex items-center justify-center overflow-hidden">
+      <div className="relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-background-light dark:bg-[#050505] flex items-center justify-center overflow-hidden">
         <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
         <div className="relative z-10 bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center shadow-2xl">
           <AnimatedLogo brandColor={brandColor} />
@@ -1367,10 +1367,10 @@ export default function App() {
   }
 
   return (
-    <div className={`relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-slate-50 dark:bg-[#050505] selection:bg-brand/30`}>
+    <div className={`relative min-h-screen font-sans text-slate-900 dark:text-slate-50 bg-background-light dark:bg-[#050505] selection:bg-brand/30`}>
       <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
       <div className="relative z-10 w-full pb-20">
-        <nav className="border-b border-black/5 dark:border-white/5 bg-black/50 backdrop-blur-2xl sticky top-0 z-50 flex flex-col w-full">
+        <nav className="border-b border-black/5 dark:border-white/5 bg-white/80 dark:bg-black/50 backdrop-blur-2xl sticky top-0 z-50 flex flex-col w-full">
           <div className="h-20 flex items-center border-b border-black/5 dark:border-white/5 md:border-none">
             <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
               <div className="flex items-center gap-3">

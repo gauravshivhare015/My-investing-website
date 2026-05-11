@@ -2,14 +2,23 @@
 
 @theme {
   --color-brand: rgb(var(--brand-color-rgb, 245 158 11));
-  --color-surface-light: #fafafa;
-  --color-background-light: #fdfcfb;
-  --color-muted-light: #f8f6f4;
+  --color-surface-light: #ffffff;
+  --color-background-light: #f3f4f6;
+  --color-muted-light: #f8f9fa;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+@layer utilities {
+  html:not(.dark) .border-black\/5 {
+    border-color: #e5e7eb;
+  }
+  html:not(.dark) .border-black\/10 {
+    border-color: #e5e7eb;
+  }
+}
 
 @layer components {
   .glass-card {
