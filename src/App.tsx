@@ -10,7 +10,7 @@ import {
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste
+  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -896,6 +896,7 @@ const parseDDMMYYYYtoISO = (val: string) => {
 const HoldingsTable = ({ user }: { user: any }) => {
   const [holdings, setHoldings] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -910,6 +911,14 @@ const HoldingsTable = ({ user }: { user: any }) => {
     });
     return () => unsubscribe();
   }, [user]);
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const saveHoldingToFirestore = async (holding: any) => {
     if (!user) return;
@@ -1036,87 +1045,155 @@ const HoldingsTable = ({ user }: { user: any }) => {
     const dayGlPct = ((h.ltp - h.pClose) / h.pClose) * 100;
 
     return { ...h, inv, cur, overallGlAbs, overallGlPct, dayGlAbs, dayGlPct };
-  }).sort((a, b) => b.overallGlPct - a.overallGlPct);
+  }).sort((a, b) => {
+    const aValue = a[sortConfig.key];
+    const bValue = b[sortConfig.key];
+    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const SortIndicator = ({ column }: { column: string }) => {
+    if (sortConfig.key !== column) return <ArrowUpDown size={10} className="ml-1 opacity-20" />;
+    return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-brand" /> : <ChevronDown size={10} className="ml-1 text-brand" />;
+  };
 
   const formatAmt = (v: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(v);
 
   return (
     <div 
-      className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-4 md:p-6 overflow-hidden mt-6 border border-black/5 dark:border-white/5 shadow-2xl focus:outline-none focus:ring-2 focus:ring-brand/30"
+      className="bg-white/40 dark:bg-[#0d0d0d]/40 backdrop-blur-xl rounded-[2rem] p-6 md:p-8 overflow-hidden mt-8 border border-white/20 dark:border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] focus:outline-none focus:ring-4 focus:ring-brand/10 transition-all duration-500 relative"
       onPaste={handlePaste}
       tabIndex={0}
     >
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
-        <div>
-          <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs relative">
-            Holdings
+      {/* Background Decorative Glows */}
+      <div className="absolute -top-24 -right-24 w-64 h-64 bg-brand/10 blur-[100px] rounded-full pointer-events-none" />
+      <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-emerald-500/5 blur-[100px] rounded-full pointer-events-none" />
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6 relative z-10">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-slate-900 dark:text-white font-black uppercase tracking-[0.25em] text-[10px] md:text-xs">
+              Portfolio Holdings
+            </h3>
             {isProcessing && (
-               <span className="absolute -top-1 -right-4 w-2 h-2 rounded-full border border-brand border-t-transparent animate-spin ml-2"></span>
+               <motion.div 
+                 animate={{ rotate: 360 }}
+                 transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                 className="w-3 h-3 rounded-full border-2 border-brand border-t-transparent"
+               />
             )}
-          </h3>
-          <p className="text-[8px] md:text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Current Portfolio Constituents</p>
+          </div>
+          <p className="text-[10px] md:text-[11px] text-zinc-500 font-medium tracking-tight">
+            Live equity distribution & performance analytics
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-4">
            <button 
              onClick={() => fileInputRef.current?.click()}
              disabled={isProcessing}
-             className="px-3 py-1.5 md:px-4 md:py-2 text-[9px] md:text-[10px] font-bold tracking-widest uppercase rounded-lg border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 hover:border-brand/30 transition-all flex items-center gap-2 group disabled:opacity-50"
-             title="Upload screenshot or simply Ctrl+V / Cmd+V to paste"
+             className="px-5 py-2.5 text-[10px] font-black tracking-widest uppercase rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-slate-900/10 dark:shadow-white/5 group disabled:opacity-50"
            >
-              <div className="p-1 rounded-sm bg-brand/10 text-brand">
-                 <Rocket size={12} className="group-hover:-translate-y-[1px] group-hover:translate-x-[1px] transition-transform" />
-              </div>
-              <span>{isProcessing ? 'Processing AI...' : 'Magic Import'}</span>
+              <Rocket size={14} className="group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />
+              <span>{isProcessing ? 'Analyzing...' : 'Intelligence Import'}</span>
            </button>
            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
         </div>
       </div>
-      <div className="overflow-x-auto hide-scrollbar">
-        <table className="w-full text-left border-collapse min-w-[700px]">
-          <thead className="bg-black/5 dark:bg-white/5 border-b border-black/5 dark:border-white/5">
-            <tr className="uppercase text-[8px] md:text-[9px] font-black tracking-widest text-zinc-500">
-              <th className="p-3 md:p-4 rounded-tl-xl">Name</th>
-              <th className="p-3 md:p-4 text-right">Quantity</th>
-              <th className="p-3 md:p-4 text-right">Avg. Price</th>
-              <th className="p-3 md:p-4 text-right">LTP</th>
-              <th className="p-3 md:p-4 text-right">Inv. Amt.</th>
-              <th className="p-3 md:p-4 text-right">Current Val.</th>
-              <th className="p-3 md:p-4 text-right">Overall G/L</th>
-              <th className="p-3 md:p-4 text-right rounded-tr-xl">Day's G/L</th>
+
+      <div className="overflow-x-auto hide-scrollbar relative z-10">
+        <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px]">
+          <thead>
+            <tr className="uppercase text-[10px] font-black tracking-widest text-zinc-400 select-none">
+              <th className="px-6 py-3 cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('name')}>
+                <div className="flex items-center gap-1">Ticker <SortIndicator column="name" /></div>
+              </th>
+              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('qty')}>
+                <div className="flex items-center justify-end gap-1">Units <SortIndicator column="qty" /></div>
+              </th>
+              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('avg')}>
+                <div className="flex items-center justify-end gap-1">Cost Bas. <SortIndicator column="avg" /></div>
+              </th>
+              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('ltp')}>
+                <div className="flex items-center justify-end gap-1">Market <SortIndicator column="ltp" /></div>
+              </th>
+              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('inv')}>
+                <div className="flex items-center justify-end gap-1">Invested <SortIndicator column="inv" /></div>
+              </th>
+              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('cur')}>
+                <div className="flex items-center justify-end gap-1">Value <SortIndicator column="cur" /></div>
+              </th>
+              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('overallGlPct')}>
+                <div className="flex items-center justify-end gap-1">ROI <SortIndicator column="overallGlPct" /></div>
+              </th>
+              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('dayGlPct')}>
+                <div className="flex items-center justify-end gap-1">Day Δ <SortIndicator column="dayGlPct" /></div>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {data.map((row, i) => (
-              <tr key={row.name} className="border-b border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors text-[10px] md:text-[11px] font-mono">
-                <td className="p-3 md:p-4">
-                  <div 
-                    className="inline-flex items-center gap-2 font-bold text-slate-900 dark:text-white font-sans cursor-pointer hover:text-rose-500 transition-colors group"
-                    onClick={() => handleDeleteHolding(row)}
-                    title="Click to delete"
-                  >
-                    {row.name}
-                    <Trash2 size={12} className="opacity-0 group-hover:opacity-100 text-rose-500 transition-opacity" />
-                  </div>
-                </td>
-                <td className="p-3 md:p-4 text-right text-zinc-600 dark:text-zinc-400">{row.qty}</td>
-                <td className="p-3 md:p-4 text-right text-zinc-600 dark:text-zinc-400">{formatAmt(row.avg)}</td>
-                <td className="p-3 md:p-4 text-right text-slate-900 dark:text-white font-medium">{formatAmt(row.ltp)}</td>
-                <td className="p-3 md:p-4 text-right text-zinc-600 dark:text-zinc-400">{formatAmt(row.inv)}</td>
-                <td className="p-3 md:p-4 text-right text-slate-900 dark:text-white font-medium">{formatAmt(row.cur)}</td>
-                <td className="p-3 md:p-4 text-right">
-                  <div className={`flex flex-col items-end ${row.overallGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    <span className="font-bold">{row.overallGlAbs >= 0 ? '🟢' : '🔴'} {formatAmt(row.overallGlAbs)}</span>
-                    <span className="text-[9px] opacity-80">{row.overallGlPct > 0 ? '+' : ''}{row.overallGlPct.toFixed(2)}%</span>
-                  </div>
-                </td>
-                <td className="p-3 md:p-4 text-right">
-                  <div className={`flex flex-col items-end ${row.dayGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    <span className="font-bold">{row.dayGlAbs >= 0 ? '🟢' : '🔴'} {formatAmt(row.dayGlAbs)}</span>
-                    <span className="text-[9px] opacity-80">{row.dayGlPct > 0 ? '+' : ''}{row.dayGlPct.toFixed(2)}%</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            <AnimatePresence initial={false} mode="popLayout">
+              {data.map((row, idx) => (
+                <motion.tr 
+                  layout
+                  key={row.id} 
+                  initial={{ opacity: 0, x: -20, filter: "blur(10px)" }}
+                  animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                  exit={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }}
+                  transition={{ 
+                    layout: { type: "spring", stiffness: 350, damping: 35 },
+                    opacity: { duration: 0.2 },
+                    x: { type: "spring", stiffness: 300, damping: 30, delay: idx * 0.03 }
+                  }}
+                  className="group bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm hover:bg-white/80 dark:hover:bg-white/[0.06] transition-all duration-300 ring-1 ring-black/5 dark:ring-white/5 hover:ring-brand/30 rounded-2xl overflow-hidden"
+                >
+                  <td className="px-6 py-5 first:rounded-l-2xl">
+                    <div 
+                      className="flex items-center gap-3 font-bold text-slate-900 dark:text-white font-sans cursor-pointer group/ticker"
+                      onClick={() => handleDeleteHolding(row)}
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center text-[10px] font-black group-hover/ticker:bg-rose-500 group-hover/ticker:text-white transition-all duration-300 shadow-sm border border-brand/10 group-hover/ticker:border-rose-500/20">
+                        {row.name.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs tracking-tight group-hover/ticker:text-rose-500 transition-colors uppercase">{row.name}</span>
+                        <div className="flex items-center gap-1 opacity-0 group-hover/ticker:opacity-100 transition-opacity">
+                          <Trash2 size={10} className="text-rose-500" />
+                          <span className="text-[8px] text-rose-500 font-black tracking-widest uppercase">Terminate</span>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">{row.qty}</td>
+                  <td className="px-6 py-5 text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.avg)}</td>
+                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-bold">₹{formatAmt(row.ltp)}</td>
+                  <td className="px-6 py-5 text-right font-mono text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.inv)}</td>
+                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">₹{formatAmt(row.cur)}</td>
+                  <td className="px-6 py-5 text-right last:rounded-r-2xl">
+                    <div className={`flex flex-col items-end ${row.overallGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      <div className="flex items-center gap-1.5 font-black text-xs">
+                        <span className="filter drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]">{row.overallGlAbs >= 0 ? '▲' : '▼'}</span> 
+                        <span>₹{formatAmt(Math.abs(row.overallGlAbs))}</span>
+                      </div>
+                      <span className="text-[10px] font-bold opacity-80 bg-current/10 px-2 py-0.5 rounded-full mt-1">
+                        {row.overallGlPct > 0 ? '+' : ''}{row.overallGlPct.toFixed(2)}%
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <div className={`flex flex-col items-end ${row.dayGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      <span className="font-bold text-[11px]">
+                         {row.dayGlAbs >= 0 ? '+' : ''}₹{formatAmt(row.dayGlAbs)}
+                      </span>
+                      <span className="text-[9px] font-bold opacity-70">
+                        {row.dayGlPct > 0 ? '+' : ''}{row.dayGlPct.toFixed(2)}%
+                      </span>
+                    </div>
+                  </td>
+                </motion.tr>
+              ))}
+            </AnimatePresence>
           </tbody>
         </table>
       </div>
