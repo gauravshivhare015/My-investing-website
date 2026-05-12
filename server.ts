@@ -5,22 +5,17 @@ import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { createRequire } from "module";
+import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from "otplib";
 
 const require = createRequire(import.meta.url);
 
-// Robustly load dependencies from CJS packages in ESM environment
-let authenticator: any;
-let SmartAPI: any;
+const totpInst = new TOTP({
+  crypto: new NobleCryptoPlugin(),
+  base32: new ScureBase32Plugin(),
+});
 
-try {
-  const otplib = require("otplib");
-  // In v13, authenticator is often exposed as a property or on default
-  authenticator = otplib.authenticator || (otplib.default && otplib.default.authenticator) || otplib.default || otplib;
-  
-  console.log("Authenticator found:", !!authenticator);
-} catch (e) {
-  console.error("Failed to load otplib library:", e);
-}
+// Robustly load dependencies from CJS packages in ESM environment
+let SmartAPI: any;
 
 try {
   const smartapi_pkg = require("smartapi-javascript");
@@ -45,7 +40,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 console.log("Final library status:", { 
-  hasAuthenticator: !!authenticator, 
   hasSmartAPI: !!SmartAPI
 });
 
@@ -65,12 +59,6 @@ async function startServer() {
   // app.use(express.json()); // This is already called below
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
-
-  // Logging middleware to debug request routing
-  app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    next();
-  });
 
   // Health and Config status routes
   app.get("/api/health", (req, res) => res.json({ status: "ok" }));
@@ -140,15 +128,7 @@ async function startServer() {
       try {
         console.log("Generating TOTP token...");
         
-        // Use a more robust way to get the generator
-        const otplib = require("otplib");
-        const totp = otplib.authenticator || otplib.totp || (otplib.default && otplib.default.authenticator);
-        
-        if (!totp || typeof totp.generate !== 'function') {
-           throw new Error("Could not find a valid TOTP generator in otplib.");
-        }
-
-        totpToken = totp.generate(rawSecret);
+        totpToken = await totpInst.generate({ secret: rawSecret });
         
         if (!totpToken) {
             throw new Error("Generated TOTP token was null or empty.");
@@ -299,14 +279,7 @@ async function startServer() {
 
       let totpToken: string;
       try {
-        const otplib = require("otplib");
-        const totp = otplib.authenticator || otplib.totp || (otplib.default && otplib.default.authenticator);
-        
-        if (!totp || typeof totp.generate !== 'function') {
-           throw new Error("Could not find a valid TOTP generator in otplib.");
-        }
-        
-        totpToken = totp.generate(rawSecret);
+        totpToken = await totpInst.generate({ secret: rawSecret });
       } catch (err: any) {
         console.error("TOTP Generation Error in Market Data:", err);
         return res.status(400).json({ error: `TOTP Generation failed: ${err.message}` });
