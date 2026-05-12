@@ -209,17 +209,16 @@ async function startServer() {
       
       console.log("All discovered methods on smart_api:", allMethods);
 
-      // Check for holdings method using various names found in different SDK versions
-      const possibleHoldingsMethods = ['getHoldings', 'getAllHoldings', 'getHolding', 'get_holdings'];
-      let getHoldingsFn: Function | null = null;
-      
-      for (const name of possibleHoldingsMethods) {
-        if (typeof instance[name] === 'function') {
-          console.log(`Found holdings method: ${name}`);
-          getHoldingsFn = instance[name];
-          break;
+      // Helper to find similar method names
+      const findMethod = (names: string[]) => {
+        for (const name of names) {
+          if (typeof instance[name] === 'function') return instance[name];
         }
-      }
+        return null;
+      };
+
+      // Check for holdings method
+      const getHoldingsFn = findMethod(['getHoldings', 'getAllHoldings', 'getHolding', 'get_holdings']);
       
       if (!getHoldingsFn) {
         console.error("Critical: No holdings method found on smart_api instance. Available methods:", allMethods);
@@ -229,6 +228,80 @@ async function startServer() {
       console.log("Fetching holdings...");
       const holdingsResult = await getHoldingsFn.call(smart_api);
       
+      // Also fetch Trade Book and Order Book for Transactions Dashboard
+      const getTradeBookFn = findMethod(['getTradeBook', 'get_tradebook', 'get_trade_book', 'getTrades']);
+      const getOrderBookFn = findMethod(['getOrderBook', 'get_orderbook', 'get_order_book', 'getOrders']);
+
+      let tradeBook = [];
+      let orderBook = [];
+
+      try {
+        if (getTradeBookFn) {
+           console.log("Fetching trade book...");
+           const trades = await getTradeBookFn.call(smart_api);
+           if (trades && trades.status && trades.data) {
+             tradeBook = trades.data;
+           }
+        }
+        if (getOrderBookFn) {
+           console.log("Fetching order book...");
+           const orders = await getOrderBookFn.call(smart_api);
+           if (orders && orders.status && orders.data) {
+             orderBook = orders.data;
+           }
+        }
+      } catch (bookErr) {
+        console.error("Non-critical error fetching books:", bookErr);
+      }
+
+      // Fetch RMS (Funds) details
+      const getRMSFn = findMethod(['getRMS', 'getRMSLimit', 'get_rms', 'get_rms_limit']);
+      const getLedgerFn = findMethod(['getLedger', 'get_ledger', 'getStatement', 'get_statement', 'getAccountStatement']);
+      
+      let rmsData = null;
+      let ledgerData = null;
+
+      try {
+        if (getRMSFn) {
+          console.log("Fetching RMS/Funds data...");
+          const rms = await getRMSFn.call(smart_api);
+          if (rms && rms.status && rms.data) {
+            rmsData = rms.data;
+          }
+        }
+        
+        if (getLedgerFn) {
+           console.log("Found a potential Ledger/Statement method! Fetching since Jan 2025...");
+           // Format dates as DD-MM-YYYY which is common for Angel One
+           const today = new Date();
+           const toDate = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+           const fromDate = "01-01-2025";
+           
+           try {
+             const ledger = await getLedgerFn.call(smart_api, {
+               fromdate: fromDate,
+               todate: toDate
+             });
+             if (ledger && ledger.status && ledger.data) {
+               ledgerData = ledger.data;
+               console.log(`Successfully fetched ${ledgerData.length} ledger entries.`);
+             }
+           } catch (e) {
+             console.log("Ledger fetch failed with params, trying without:", e);
+             try {
+                const ledger = await getLedgerFn.call(smart_api);
+                if (ledger && ledger.status && ledger.data) {
+                  ledgerData = ledger.data;
+                }
+             } catch (e2) {
+                console.log("Ledger fetch failed completely:", e2);
+             }
+           }
+        }
+      } catch (rmsErr) {
+        console.error("Non-critical error fetching RMS/Ledger:", rmsErr);
+      }
+
       if (!holdingsResult || !holdingsResult.status) {
           console.error("Holdings API returned failure:", holdingsResult);
           throw new Error(holdingsResult?.message || "Failed to fetch holdings from Angel One.");
@@ -237,7 +310,11 @@ async function startServer() {
       console.log("--- Angel One Sync Completed Successfully ---");
       res.json({
         status: "success",
-        holdings: holdingsResult.data || []
+        holdings: holdingsResult.data || [],
+        trades: tradeBook || [],
+        orders: orderBook || [],
+        funds: rmsData,
+        ledger: ledgerData
       });
 
     } catch (error: any) {

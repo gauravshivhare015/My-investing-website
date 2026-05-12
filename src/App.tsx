@@ -905,7 +905,7 @@ const parseDDMMYYYYtoISO = (val: string) => {
   return trimmed;
 };
 
-const AngelOneIntegration = ({ user, saveHoldingToFirestore }: { user: any, saveHoldingToFirestore: (h: any) => Promise<void> }) => {
+const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveFundHistoryToFirestore, saveToTransactions }: { user: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveFundHistoryToFirestore: (funds: any) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void> }) => {
   const { addToast } = useToasts();
   const [configStatus, setConfigStatus] = useState<any>({ configured: false, status: {} });
   const [isSyncing, setIsSyncing] = useState(false);
@@ -963,7 +963,79 @@ const AngelOneIntegration = ({ user, saveHoldingToFirestore }: { user: any, save
         for (const h of mapped) {
           await saveHoldingToFirestore(h);
         }
-        addToast("Portfolio Synced", "All holdings imported successfully from Angel One.", "success");
+
+        if (data.trades && data.trades.length > 0) {
+          for (const t of data.trades) {
+            await saveTradeToFirestore(t);
+          }
+        }
+
+        if (data.funds) {
+          await saveFundsToFirestore(data.funds);
+          await saveFundHistoryToFirestore(data.funds);
+          
+          // Automatically sync to manual transactions
+          const today = new Date().toISOString().split('T')[0];
+          await saveToTransactions(today, data.funds.payin || '0', data.funds.payout || '0');
+        }
+
+        // Auto-save portfolio value on the 1st of any month
+        const today = new Date();
+        if (today.getDate() === 1) {
+          const totalVal = mapped.reduce((acc: number, h: any) => acc + (h.qty * h.ltp), 0);
+          const dateStr = today.toISOString().split('T')[0];
+          await saveHistoryToFirestore(dateStr, totalVal);
+        }
+
+        if (data.ledger && Array.isArray(data.ledger)) {
+            for (const item of data.ledger) {
+                // Angel One ledger items usually have 'date', 'credit', 'debit', 'balance', 'particulars', 'voucherno'
+                let rawDate = item.date || item.updatetime || item.filltime;
+                let normalizedDate = new Date().toISOString().split('T')[0];
+                
+                if (rawDate && typeof rawDate === 'string') {
+                    // Remove time part if exists "DD-MM-YYYY HH:MM:SS" -> "DD-MM-YYYY"
+                    const datePart = rawDate.split(' ')[0];
+                    const parts = datePart.split(/[-/]/);
+                    if (parts.length === 3) {
+                        if (parts[0].length === 2) {
+                            // Assume DD-MM-YYYY -> YYYY-MM-DD
+                            normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                        } else if (parts[0].length === 4) {
+                            // Assume YYYY-MM-DD
+                            normalizedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                        }
+                    }
+                }
+
+                // Try to identify if this is a fund transfer (Deposit/Withdrawal)
+                // Often 'particulars' contains "PAYIN" or "PAYOUT" or "FUND TRANSFER"
+                const particulars = (item.particulars || '').toUpperCase();
+                const isFundTransfer = particulars.includes('PAYIN') || 
+                                     particulars.includes('PAYOUT') || 
+                                     particulars.includes('TRANSFER') || 
+                                     particulars.includes('DEPOSIT') || 
+                                     particulars.includes('WITHDRAW');
+
+                // Only save entries that look like fund transfers or have non-zero payin/payout
+                const payin = Number(item.payin || item.credit || (item.amount > 0 && isFundTransfer ? item.amount : 0));
+                const payout = Number(item.payout || item.debit || (item.amount < 0 && isFundTransfer ? Math.abs(item.amount) : 0));
+
+                if (payin > 0 || payout > 0 || isFundTransfer) {
+                  await saveFundHistoryToFirestore({
+                      payin: String(payin),
+                      payout: String(payout),
+                      availablecash: String(item.balance || item.net || '0'),
+                      net: String(item.net || '0'),
+                      date: normalizedDate,
+                      particulars: item.particulars || '',
+                      voucherno: item.voucherno || item.vouchernumber || ''
+                  });
+                }
+            }
+        }
+
+        addToast("Portfolio Synced", data.ledger ? "Holdings, trades, and ledger since Jan 2025 imported successfully." : "All holdings, trades, and fund status imported successfully.", "success");
       } else {
         addToast("Sync Failed", data.error || "Integration encountered an error.", "error");
       }
@@ -1176,7 +1248,14 @@ const HoldingsTable = ({ user }: { user: any }) => {
 
   const saveHoldingToFirestore = async (holding: any) => {
     if (!user) return;
-    const holdingId = holding.id || `holding_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Use a stable ID based on symboltoken (API) or name (Manual/Gemini)
+    const stableId = (holding.symboltoken && holding.exchange) 
+      ? `holding_${holding.symboltoken}_${holding.exchange}`
+      : (holding.symboltoken)
+        ? `holding_${holding.symboltoken}`
+        : `holding_${(holding.name || 'unknown').replace(/\s+/g, '_').toUpperCase()}`;
+    
+    const holdingId = holding.id || stableId;
     const path = `artifacts/${appId}/users/${user.uid}/holdings/${holdingId}`;
     try {
       await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/holdings`, holdingId), {
@@ -1509,6 +1588,9 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
   const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
   const [prompts, setPrompts] = useState<any[]>([]);
+  const [apiTrades, setApiTrades] = useState<any[]>([]);
+  const [apiFunds, setApiFunds] = useState<any>(null);
+  const [apiFundHistory, setApiFundHistory] = useState<any[]>([]);
   const [files, setFiles] = useState<any[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -1568,7 +1650,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const benchPath = collection(db, 'artifacts', appId, 'users', user.uid, 'benchmark');
     const promptsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'prompts');
     const filesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'files');
+    const apiTradesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'api_trades');
+    const apiFundsPath = doc(db, 'artifacts', appId, 'users', user.uid, 'api_funds', 'current');
 
+    const apiFundHistoryPath = collection(db, 'artifacts', appId, 'users', user.uid, 'api_fund_history');
+    
     const unsubTxns = onSnapshot(txnsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -1592,7 +1678,20 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setFiles(data.sort((a, b) => b.uploadedAt - a.uploadedAt));
     }, (error) => handleFirestoreError(error, OperationType.LIST, filesPath.path));
-    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); };
+    const unsubApiTrades = onSnapshot(apiTradesPath, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      setApiTrades(data.sort((a, b) => new Date(b.filltime || b.updatetime || 0).getTime() - new Date(a.filltime || a.updatetime || 0).getTime()));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, apiTradesPath.path));
+    const unsubApiFunds = onSnapshot(apiFundsPath, (snapshot) => {
+      if (snapshot.exists()) {
+        setApiFunds(snapshot.data());
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, apiFundsPath.path));
+    const unsubApiFundHistory = onSnapshot(apiFundHistoryPath, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      setApiFundHistory(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, apiFundHistoryPath.path));
+    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); unsubApiTrades(); unsubApiFunds(); unsubApiFundHistory(); };
   }, [user]);
 
   const updateCloudDoc = async (collName: string, id: string, data: any) => {
@@ -2018,6 +2117,9 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <button onClick={() => scrollToSection('dashboards')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Dashboards</button>
               <button onClick={() => scrollToSection('performance')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Performance Comparison</button>
               <button onClick={() => scrollToSection('savings')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Net Savings</button>
+              <button onClick={() => scrollToSection('api-funds')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Funds</button>
+              <button onClick={() => scrollToSection('api-fund-history')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Fund Transfers</button>
+              <button onClick={() => scrollToSection('api-trades')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Transactions</button>
               <button onClick={() => scrollToSection('prompts')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Prompts</button>
               <button onClick={() => scrollToSection('documents')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Documents</button>
             </div>
@@ -2133,6 +2235,141 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 <HoldingsTable user={user} />
               </div>
 
+              {apiFunds && (
+                <div id="api-funds" className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500"><Wallet size={20} /></div>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">API Funds & Transfers</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="glass-card p-5 rounded-2xl border border-black/5 dark:border-white/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Available Cash</p>
+                      <p className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">₹{apiFunds.availablecash || '0.00'}</p>
+                    </div>
+                    <div className="glass-card p-5 rounded-2xl border border-black/5 dark:border-white/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-1">Today's Deposit (Pay-in)</p>
+                      <p className="text-2xl font-black text-emerald-500 tracking-tight">₹{apiFunds.payin || '0.00'}</p>
+                    </div>
+                    <div className="glass-card p-5 rounded-2xl border border-black/5 dark:border-white/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-1">Today's Withdrawal (Pay-out)</p>
+                      <p className="text-2xl font-black text-rose-500 tracking-tight">₹{apiFunds.payout || '0.00'}</p>
+                    </div>
+                    <div className="glass-card p-5 rounded-2xl border border-black/5 dark:border-white/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Net Balance</p>
+                      <p className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">₹{apiFunds.net || '0.00'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {apiFundHistory.length > 0 && (
+                <div id="api-fund-history" className="space-y-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500"><IndianRupee size={20} /></div>
+                      <h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Deposit & Withdrawal History (API)</h3>
+                    </div>
+                    
+                    <button 
+                      onClick={async () => {
+                        const confirmSync = window.confirm("This will copy ALL API-synced deposit/withdrawal history into your manual transactions ledger (Data tab). Existing entries with the same ID will be updated. Proceed?");
+                        if (!confirmSync) return;
+                        
+                        try {
+                          for (const h of apiFundHistory) {
+                            // Extract unique identifier from h.id (which is fund_YYYY-MM-DD_voucherno)
+                            const uniqueSuffix = h.id.split('_').slice(2).join('_');
+                            const txnId = `api_txn_${h.date}_${uniqueSuffix}`;
+                            await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/transactions`, txnId), {
+                              id: txnId,
+                              date: h.date,
+                              deposit: Number(h.payin || 0),
+                              withdrawal: Number(h.payout || 0),
+                              particulars: h.particulars || '',
+                              source: 'AngelOne API'
+                            });
+                          }
+                          addToast("Ledger Updated", "All history successfully pushed to manual transactions.", "success");
+                        } catch (err) {
+                          console.error(err);
+                          addToast("Update Failed", "Failed to transfer data to ledger.", "error");
+                        }
+                      }}
+                      className="group flex items-center gap-2 px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95"
+                    >
+                      <ArrowUpRight size={14} className="group-hover:rotate-45 transition-transform" />
+                      Apply to Manual Ledger
+                    </button>
+                  </div>
+                  <div className="glass-card rounded-2xl overflow-hidden border border-black/5 dark:border-white/5">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs md:text-sm">
+                        <thead className="bg-slate-50 dark:bg-white/5 border-b border-black/5 dark:border-white/5 uppercase text-[10px] font-black tracking-widest text-zinc-500">
+                          <tr>
+                            <th className="p-4">Date</th>
+                            <th className="p-4">Particulars</th>
+                            <th className="p-4 text-emerald-500">Deposit (Pay-in)</th>
+                            <th className="p-4 text-rose-500">Withdrawal (Pay-out)</th>
+                            <th className="p-4">Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-black/5 dark:divide-white/5">
+                          {apiFundHistory.slice(0, 50).map((h, idx) => (
+                            <tr key={h.id || idx} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors group">
+                              <td className="p-4 font-mono">{h.date}</td>
+                              <td className="p-4">
+                                <span className="text-[10px] md:text-xs font-medium text-zinc-600 dark:text-zinc-400 block max-w-[200px] truncate group-hover:whitespace-normal transition-all" title={h.particulars}>
+                                  {h.particulars || 'Fund Transfer'}
+                                </span>
+                              </td>
+                              <td className="p-4 font-bold text-emerald-600 dark:text-emerald-400">₹{h.payin}</td>
+                              <td className="p-4 font-bold text-rose-600 dark:text-rose-400">₹{h.payout}</td>
+                              <td className="p-4 font-bold text-slate-700 dark:text-zinc-300">₹{h.availablecash}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {apiTrades.length > 0 && (
+                <div id="api-trades" className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-brand/10 rounded-lg text-brand"><Activity size={20} /></div>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Recent API Transactions</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    {apiTrades.slice(0, 5).map((trade, idx) => (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.1 }}
+                        key={trade.id || idx} 
+                        className="glass-card p-4 rounded-2xl border border-black/5 dark:border-white/5 relative overflow-hidden"
+                      >
+                        <div className={`absolute top-0 right-0 w-1 h-full ${trade.transactiontype === 'BUY' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{trade.exchange}</span>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${trade.transactiontype === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                            {trade.transactiontype}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate mb-1">{trade.tradingsymbol}</h4>
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="text-zinc-500">Qty: <span className="text-slate-900 dark:text-zinc-300 font-bold">{trade.fillqty || trade.quantity}</span></span>
+                          <span className="text-zinc-500">@ <span className="text-slate-900 dark:text-zinc-300 font-bold">₹{trade.fillprice || trade.averageprice}</span></span>
+                        </div>
+                        <div className="mt-3 text-[9px] text-zinc-400 font-mono">
+                          {trade.filltime || trade.updatetime || 'Recently'}
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-slate-200/60 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/10 focus:border-brand/30 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" /></div></div>
                 {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-slate-200 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-slate-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-slate-300 dark:text-zinc-800 mb-4" /><p className="text-slate-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
@@ -2202,12 +2439,74 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                     user={user} 
                     saveHoldingToFirestore={async (holding: any) => {
                       if (!user) return;
-                      const holdingId = holding.id || `holding_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                      // Use a stable ID based on symboltoken or name
+                      const stableId = (holding.symboltoken && holding.exchange) 
+                        ? `holding_${holding.symboltoken}_${holding.exchange}`
+                        : (holding.symboltoken)
+                          ? `holding_${holding.symboltoken}`
+                          : `holding_${(holding.name || 'unknown').replace(/\s+/g, '_').toUpperCase()}`;
+                      
+                      const holdingId = holding.id || stableId;
                       await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/holdings`, holdingId), {
                         ...holding,
                         id: holdingId
                       });
                     }} 
+                    saveTradeToFirestore={async (trade: any) => {
+                      if (!user) return;
+                      // Use trade.uniqueorderid or orderid or fillid for deterministic ID
+                      const stableTradeId = trade.uniqueorderid || trade.orderid || trade.fillid || `trade_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                      const tradeId = trade.id || stableTradeId;
+                      
+                      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/api_trades`, tradeId), {
+                        ...trade,
+                        id: tradeId,
+                        syncedAt: Date.now()
+                      });
+                    }}
+                    saveFundsToFirestore={async (funds: any) => {
+                      if (!user) return;
+                      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/api_funds`, 'current'), {
+                        ...funds,
+                        syncedAt: Date.now()
+                      }, { merge: true });
+                    }}
+                    saveHistoryToFirestore={async (date: string, value: number) => {
+                      if (!user) return;
+                      // Check if already exists for this date to avoid duplicates if user clicks sync multiple times
+                      const histId = `auto_${date}`;
+                      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/history`, histId), {
+                        id: histId,
+                        date: date,
+                        marketValue: value
+                      });
+                    }}
+                    saveFundHistoryToFirestore={async (funds: any) => {
+                      if (!user) return;
+                      const date = funds.date || new Date().toISOString().split('T')[0];
+                      // Use a more unique ID to avoid overwriting multiple transactions on the same day
+                      // If the data has a unique id or voucher number, use it. Otherwise use date+payin+payout
+                      const uniqueSuffix = funds.voucherno || funds.voucherNo || funds.id || `${funds.payin}_${funds.payout}_${Math.random().toString(36).substr(2, 5)}`;
+                      const histId = `fund_${date}_${uniqueSuffix}`;
+                      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/api_fund_history`, histId), {
+                        ...funds,
+                        id: histId,
+                        date: date,
+                        syncedAt: Date.now()
+                      }, { merge: true });
+                    }}
+                    saveToTransactions={async (date: string, deposit: string, withdrawal: string) => {
+                      if (!user) return;
+                      // We save it to the manual transactions collection
+                      const txnId = `api_txn_${date}`;
+                      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/transactions`, txnId), {
+                        id: txnId,
+                        date: date,
+                        deposit: Number(deposit),
+                        withdrawal: Number(withdrawal),
+                        source: 'AngelOne API'
+                      });
+                    }}
                   />
 
                   {/* Future Integrations Placeholder */}
@@ -2227,8 +2526,38 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
           {activeTab === 'data' && (
             <div className="space-y-6 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {apiFunds && (
+                <div className="glass-card p-6 rounded-[2.5rem] border border-black/5 dark:border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-brand/10 rounded-2xl text-brand"><Wallet size={24} /></div>
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-500">Synced API Funds</h4>
+                      <div className="flex items-center gap-6 mt-1">
+                        <div>
+                          <span className="text-[10px] text-zinc-400 uppercase font-bold block">Available</span>
+                          <span className="text-lg font-black text-slate-900 dark:text-white">₹{apiFunds.availablecash}</span>
+                        </div>
+                        <div className="w-px h-8 bg-slate-200 dark:bg-white/10" />
+                        <div>
+                          <span className="text-[10px] text-emerald-500 uppercase font-bold block">Pay-in</span>
+                          <span className="text-lg font-black text-emerald-500">₹{apiFunds.payin}</span>
+                        </div>
+                        <div className="w-px h-8 bg-slate-200 dark:bg-white/10" />
+                        <div>
+                          <span className="text-[10px] text-rose-500 uppercase font-bold block">Pay-out</span>
+                          <span className="text-lg font-black text-rose-500">₹{apiFunds.payout}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-mono text-zinc-500 uppercase">Last Synced</p>
+                    <p className="text-[10px] font-bold text-zinc-400">{new Date(apiFunds.syncedAt).toLocaleString()}</p>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8 items-start">
-                <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
+                <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','particulars','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','particulars','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
                 <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
                 <Sheet title="Benchmark Sim" coll="benchmark" data={benchmarkHistory} onEdit={handleBmChange} onDelete={handleBmDelete} keys={['date','price']} onPaste={(e: any) => handlePaste(e,'benchmark',['date','price'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
               </div>
@@ -2343,7 +2672,15 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
     setShowDropdown(false);
   };
 
-  const savedItems = data.filter((row: any) => !!row.id && (row.title || row.content || (row.deposit !== '' && row.deposit !== undefined) || (row.withdrawal !== '' && row.withdrawal !== undefined) || (row.marketValue !== '' && row.marketValue !== undefined) || (row.price !== '' && row.price !== undefined)));
+  const savedItems = data.filter((row: any) => !!row.id && (
+    row.title || 
+    row.content || 
+    row.particulars ||
+    (row.deposit !== '' && row.deposit !== undefined) || 
+    (row.withdrawal !== '' && row.withdrawal !== undefined) || 
+    (row.marketValue !== '' && row.marketValue !== undefined) || 
+    (row.price !== '' && row.price !== undefined)
+  ));
   const activeItems = data.filter((row: any) => !!row.id && !savedItems.includes(row));
 
   const selectableItems = [...savedItems, ...activeItems].filter(item => item.id);
@@ -2550,11 +2887,11 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                           />
                         ) : (
                           <input 
-                            type={k === 'title' ? 'text' : 'number'} 
+                            type={(k === 'title' || k === 'particulars') ? 'text' : 'number'} 
                             value={row[k] === undefined ? '' : row[k]} 
                             onPaste={(e) => {
                                const text = e.clipboardData.getData('Text');
-                               if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title') {
+                               if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title' && k !== 'particulars') {
                                   const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
                                   if (!isNaN(parsed)) {
                                      e.preventDefault();
@@ -2563,9 +2900,9 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                                } else {
                                   onPaste(e);
                                }
-                            }}
+                            }} 
                             onChange={e => onEdit(row.id, k, e.target.value)} 
-                            placeholder="0.00" 
+                            placeholder={k === 'title' || k === 'particulars' ? '...' : '0.00'} 
                             className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
                           />
                         )}

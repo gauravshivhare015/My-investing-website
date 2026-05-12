@@ -67,6 +67,50 @@
         "ltp": { "type": "number" },
         "pClose": { "type": "number" }
       }
+    },
+    "ApiTrade": {
+      "title": "ApiTrade",
+      "description": "A trade fetched via Angel One API",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tradingsymbol": { "type": "string" },
+        "transactiontype": { "type": "string" },
+        "exchange": { "type": "string" },
+        "quantity": { "type": "string" },
+        "averageprice": { "type": "string" },
+        "fillqty": { "type": "string" },
+        "fillprice": { "type": "string" },
+        "filltime": { "type": "string" },
+        "updatetime": { "type": "string" },
+        "syncedAt": { "type": "number" }
+      }
+    },
+    "ApiFund": {
+      "title": "ApiFund",
+      "description": "User funds status from API",
+      "type": "object",
+      "properties": {
+        "availablecash": { "type": "string" },
+        "payin": { "type": "string" },
+        "payout": { "type": "string" },
+        "net": { "type": "string" },
+        "syncedAt": { "type": "number" }
+      }
+    },
+    "ApiFundHistory": {
+      "title": "ApiFundHistory",
+      "description": "Historical fund status from API",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "availablecash": { "type": "string" },
+        "payin": { "type": "string" },
+        "payout": { "type": "string" },
+        "net": { "type": "string" },
+        "syncedAt": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -93,6 +137,18 @@
     "/artifacts/{appId}/users/{userId}/holdings/{holdingId}": {
       "schema": { "$ref": "#/entities/Holding" },
       "description": "User stock holdings"
+    },
+    "/artifacts/{appId}/users/{userId}/api_trades/{tradeId}": {
+      "schema": { "$ref": "#/entities/ApiTrade" },
+      "description": "User trades from API"
+    },
+    "/artifacts/{appId}/users/{userId}/api_funds/{fundId}": {
+      "schema": { "$ref": "#/entities/ApiFund" },
+      "description": "User funds from API"
+    },
+    "/artifacts/{appId}/users/{userId}/api_fund_history/{historyId}": {
+      "schema": { "$ref": "#/entities/ApiFundHistory" },
+      "description": "User funds history from API"
     }
   }
 }
