@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand: rgb(var(--brand-color-rgb, 245 158 11));
+  --color-brand: rgb(var(--brand-color-rgb, 99 102 241));
   --color-surface-light: #ffffff;
-  --color-background-light: #f3f4f6;
-  --color-muted-light: #f8f9fa;
+  --color-background-light: #ffffff;
+  --color-muted-light: #f6f9fc;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
@@ -13,16 +13,16 @@
 
 @layer utilities {
   html:not(.dark) .border-black\/5 {
-    border-color: #e5e7eb;
+    border-color: #f1f5f9;
   }
   html:not(.dark) .border-black\/10 {
-    border-color: #e5e7eb;
+    border-color: #e2e8f0;
   }
 }
 
 @layer components {
   .glass-card {
-    @apply bg-white/40 dark:bg-white/[0.03] backdrop-blur-md border border-black/5 dark:border-white/10 shadow-xl;
+    @apply bg-white dark:bg-white/[0.03] backdrop-blur-md border border-slate-200/60 dark:border-white/10 shadow-[0_2px_4px_rgba(0,0,0,0.02),0_1px_1px_rgba(0,0,0,0.03)] dark:shadow-xl;
   }
 }
 
