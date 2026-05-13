@@ -111,6 +111,16 @@
         "net": { "type": "string" },
         "syncedAt": { "type": "number" }
       }
+    },
+    "ApiSummary": {
+      "title": "ApiSummary",
+      "description": "Portfolio summary from API (e.g. SGB, total value)",
+      "type": "object",
+      "properties": {
+        "totalholdingvalue": { "type": "number" },
+        "totalinvvalue": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -149,6 +159,10 @@
     "/artifacts/{appId}/users/{userId}/api_fund_history/{historyId}": {
       "schema": { "$ref": "#/entities/ApiFundHistory" },
       "description": "User funds history from API"
+    },
+    "/artifacts/{appId}/users/{userId}/api_summary/{summaryId}": {
+      "schema": { "$ref": "#/entities/ApiSummary" },
+      "description": "User portfolio summary from API"
     }
   }
 }

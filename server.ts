@@ -5,29 +5,27 @@ import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { createRequire } from "module";
-import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from "otplib";
+import { TOTP } from "totp-generator";
 
 const require = createRequire(import.meta.url);
 
-const totpInst = new TOTP({
-  crypto: new NobleCryptoPlugin(),
-  base32: new ScureBase32Plugin(),
-});
+// totp-generator uses a static method for generation
+// No need for a persistent instance here if we use TOTP.generate()
 
 // Robustly load dependencies from CJS packages in ESM environment
 let SmartAPI: any;
 
+console.log("Initializing SmartAPI loading...");
 try {
   const smartapi_pkg = require("smartapi-javascript");
-  console.log("Loading smartapi-javascript. Package exports:", Object.keys(smartapi_pkg));
-  
-  // SmartAPI is usually a named export or under default
-  const SmartAPI_Class = smartapi_pkg.SmartAPI || (smartapi_pkg.default && smartapi_pkg.default.SmartAPI) || smartapi_pkg;
-  SmartAPI = SmartAPI_Class;
-  
-  console.log("SmartAPI Class found:", !!SmartAPI);
-  if (SmartAPI && SmartAPI.prototype) {
-    console.log("SmartAPI Prototype methods:", Object.keys(SmartAPI.prototype).filter(m => typeof SmartAPI.prototype[m] === 'function'));
+  if (smartapi_pkg) {
+    console.log("Loading smartapi-javascript. Package exports found.");
+    // SmartAPI is usually a named export or under default
+    const SmartAPI_Class = smartapi_pkg.SmartAPI || (smartapi_pkg.default && smartapi_pkg.default.SmartAPI) || smartapi_pkg;
+    SmartAPI = SmartAPI_Class;
+    console.log("SmartAPI Class extracted:", !!SmartAPI);
+  } else {
+    console.warn("smartapi-javascript package loaded as null or undefined");
   }
 } catch (e) {
   console.error("Failed to load smartapi-javascript library:", e);
@@ -128,7 +126,8 @@ async function startServer() {
       try {
         console.log("Generating TOTP token...");
         
-        totpToken = await totpInst.generate({ secret: rawSecret });
+        const totpResult = await TOTP.generate(rawSecret);
+        totpToken = totpResult.otp;
         
         if (!totpToken) {
             throw new Error("Generated TOTP token was null or empty.");
@@ -210,27 +209,84 @@ async function startServer() {
       console.log("All discovered methods on smart_api:", allMethods);
 
       // Helper to find similar method names
-      const findMethod = (names: string[]) => {
+      const findInstanceMethod = (obj: any, names: string[]) => {
         for (const name of names) {
-          if (typeof instance[name] === 'function') return instance[name];
+          if (typeof obj[name] === 'function') return obj[name];
         }
         return null;
       };
 
       // Check for holdings method
-      const getHoldingsFn = findMethod(['getHoldings', 'getAllHoldings', 'getHolding', 'get_holdings']);
+      const getHoldingsFn = findInstanceMethod(instance, ['getAllHolding', 'getHolding', 'getHoldings', 'get_holdings']);
+      const getMFHoldingsFn = findInstanceMethod(instance, ['getAllMutualFundHoldings', 'getGMFHoldings', 'getMFHoldings', 'get_all_mutual_funds_holdings']);
       
       if (!getHoldingsFn) {
         console.error("Critical: No holdings method found on smart_api instance. Available methods:", allMethods);
-        throw new Error(`API SDK mismatch: No holdings method found. Available: ${allMethods.slice(0, 10).join(", ")}`);
+        throw new Error(`API SDK mismatch: No holdings method found. Available: ${allMethods.slice(0, 15).join(", ")}`);
       }
 
-      console.log("Fetching holdings...");
+      console.log("Fetching Equity holdings using method:", getHoldingsFn.name || "anonymous");
+      // Note: In some versions, it might require params, but usually not for holdings
       const holdingsResult = await getHoldingsFn.call(smart_api);
       
+      let holdingsData = [];
+      let summaryData: any = null;
+
+      if (holdingsResult && holdingsResult.status) {
+          if (Array.isArray(holdingsResult.data)) {
+              holdingsData = holdingsResult.data.map((h: any) => ({ ...h, _source_type: 'EQUITY' }));
+              if (holdingsResult.totalholdingvalue || holdingsResult.totalvalue) {
+                  summaryData = { totalholdingvalue: Number(holdingsResult.totalholdingvalue || holdingsResult.totalvalue || 0) };
+              }
+          } else if (holdingsResult.data && holdingsResult.data.holdings) {
+              holdingsData = holdingsResult.data.holdings.map((h: any) => ({ ...h, _source_type: 'EQUITY' }));
+              summaryData = { 
+                  totalholdingvalue: Number(holdingsResult.data.totalholdingvalue || holdingsResult.data.totalvalue || 0),
+                  totalinvvalue: Number(holdingsResult.data.totalinvvalue || 0)
+              };
+          }
+      }
+
+      // Fetch Mutual Fund holdings if method exists
+      if (getMFHoldingsFn) {
+          try {
+              console.log("Fetching Mutual Fund holdings...");
+              const mfResult = await getMFHoldingsFn.call(smart_api);
+              if (mfResult && mfResult.status && mfResult.data) {
+                  const mfData = Array.isArray(mfResult.data) ? mfResult.data : (mfResult.data.holdings || [mfResult.data]);
+                  console.log(`Fetched ${mfData.length} Mutual Fund holdings.`);
+                  
+                  // Map MF data to a similar structure if needed, or just append
+                  const normalizedMF = mfData.map((m: any) => ({
+                      ...m,
+                      _source_type: 'MUTUAL_FUND',
+                      // Normalize common fields if they differ
+                      tradingsymbol: m.tradingsymbol || m.symbol || m.mfname,
+                      ltp: m.ltp || m.nav || m.currentvalue / m.quantity || 0,
+                      quantity: m.quantity || m.units || 0,
+                      isin: m.isin || m.mfsymbol
+                  }));
+                  
+                  holdingsData = [...holdingsData, ...normalizedMF];
+                  
+                  // Update summary data to include MF value
+                  const mfTotal = Number(mfResult.totalholdingvalue || mfResult.totalvalue || mfResult.data.totalholdingvalue || 
+                                       mfData.reduce((acc: number, cur: any) => acc + (Number(cur.currentvalue || (cur.ltp * cur.quantity) || 0)), 0));
+                  
+                  if (summaryData) {
+                      summaryData.totalholdingvalue += mfTotal;
+                  } else {
+                      summaryData = { totalholdingvalue: mfTotal };
+                  }
+              }
+          } catch (mfErr) {
+              console.error("Non-critical error fetching MF holdings:", mfErr);
+          }
+      }
+      
       // Also fetch Trade Book and Order Book for Transactions Dashboard
-      const getTradeBookFn = findMethod(['getTradeBook', 'get_tradebook', 'get_trade_book', 'getTrades']);
-      const getOrderBookFn = findMethod(['getOrderBook', 'get_orderbook', 'get_order_book', 'getOrders']);
+      const getTradeBookFn = findInstanceMethod(instance, ['getTradeBook', 'get_tradebook', 'get_trade_book', 'getTrades']);
+      const getOrderBookFn = findInstanceMethod(instance, ['getOrderBook', 'get_orderbook', 'get_order_book', 'getOrders']);
 
       let tradeBook = [];
       let orderBook = [];
@@ -255,8 +311,8 @@ async function startServer() {
       }
 
       // Fetch RMS (Funds) details
-      const getRMSFn = findMethod(['getRMS', 'getRMSLimit', 'get_rms', 'get_rms_limit']);
-      const getLedgerFn = findMethod(['getLedger', 'get_ledger', 'getStatement', 'get_statement', 'getAccountStatement']);
+      const getRMSFn = findInstanceMethod(instance, ['getRMS', 'getRMSLimit', 'get_rms', 'get_rms_limit']);
+      const getLedgerFn = findInstanceMethod(instance, ['getLedger', 'get_ledger', 'getStatement', 'get_statement', 'getAccountStatement']);
       
       let rmsData = null;
       let ledgerData = null;
@@ -310,7 +366,8 @@ async function startServer() {
       console.log("--- Angel One Sync Completed Successfully ---");
       res.json({
         status: "success",
-        holdings: holdingsResult.data || [],
+        holdings: holdingsData,
+        holdings_summary: summaryData,
         trades: tradeBook || [],
         orders: orderBook || [],
         funds: rmsData,
@@ -356,7 +413,8 @@ async function startServer() {
 
       let totpToken: string;
       try {
-        totpToken = await totpInst.generate({ secret: rawSecret });
+        const totpResult = await TOTP.generate(rawSecret);
+        totpToken = totpResult.otp;
       } catch (err: any) {
         console.error("TOTP Generation Error in Market Data:", err);
         return res.status(400).json({ error: `TOTP Generation failed: ${err.message}` });
@@ -388,8 +446,15 @@ async function startServer() {
         (smart_api as any).setPublicToken(jwtToken);
       }
 
-      const getMarketDataFn = smart_api.getMarketData;
-      if (typeof getMarketDataFn !== 'function') {
+      const getMarketDataFn = (names: string[]) => {
+        for (const name of names) {
+          if (typeof (smart_api as any)[name] === 'function') return (smart_api as any)[name];
+        }
+        return null;
+      };
+      
+      const marketDataMethod = getMarketDataFn(['getMarketData', 'marketData', 'get_market_data']);
+      if (!marketDataMethod) {
         throw new Error("getMarketData method not found on SDK instance.");
       }
       
@@ -399,7 +464,7 @@ async function startServer() {
         exchangeTokens[t.exchange].push(t.symboltoken);
       });
 
-      const marketData = await getMarketDataFn.call(smart_api, {
+      const marketData = await marketDataMethod.call(smart_api, {
         mode: "LTP",
         exchangeTokens: exchangeTokens
       });
@@ -444,11 +509,14 @@ async function startServer() {
   });
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server listening on port ${PORT}`);
+    console.log(`Server listening on port ${PORT} - READY FOR REQUESTS`);
   });
 }
 
-startServer().catch(err => {
-  console.error("Failed to start server:", err);
+console.log("Starting server process...");
+startServer().then(() => {
+  console.log("startServer() promise resolved");
+}).catch(err => {
+  console.error("Failed to start server ERROR:", err);
 });
 

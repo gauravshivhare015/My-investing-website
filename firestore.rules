@@ -2,67 +2,28 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Phase 0: Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: artifacts/{appId}/users/{userId}/transactions
-    // Document ID: auto-generated or UUID
-    // Fields:
-    //   - id: string
-    //   - date: string
-    //   - deposit: number (optional)
-    //   - withdrawal: number (optional)
-    //
-    // Collection: artifacts/{appId}/users/{userId}/history
-    // Document ID: auto-generated or UUID
-    // Fields:
-    //   - id: string
-    //   - date: string
-    //   - marketValue: number
-    //
-    // Collection: artifacts/{appId}/users/{userId}/benchmark
-    // Document ID: auto-generated or UUID
-    // Fields:
-    //   - id: string
-    //   - date: string
-    //   - price: number
-    //
-    // Collection: artifacts/{appId}/users/{userId}/prompts
-    // Document ID: auto-generated or UUID
-    // Fields:
-    //   - id: string
-    //   - title: string
-    //   - content: string
-    //
-    // Collection: artifacts/{appId}/users/{userId}/files
-    // Document ID: auto-generated or UUID
-    // Fields:
-    //   - id: string
-    //   - name: string
-    //   - type: string
-    //   - size: number
-    //   - data: string
-    //   - uploadedAt: number
-    //
-    // ===============================================================
-
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    function isAuthenticated() {
+    // Helper functions
+    function isSignedIn() {
       return request.auth != null;
     }
 
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     match /artifacts/{appId}/users/{userId} {
+      // Allow the user document itself
+      allow read, write: if isOwner(userId);
+
       match /transactions/{transactionId} {
         allow read, write: if isOwner(userId);
       }
@@ -83,15 +44,15 @@ service cloud.firestore {
       }
       match /api_trades/{tradeId} {
         allow read, write: if isOwner(userId);
-        allow list: if isOwner(userId);
       }
       match /api_funds/{fundId} {
         allow read, write: if isOwner(userId);
-        allow list: if isOwner(userId);
       }
       match /api_fund_history/{historyId} {
         allow read, write: if isOwner(userId);
-        allow list: if isOwner(userId);
+      }
+      match /api_summary/{summaryId} {
+        allow read, write: if isOwner(userId);
       }
     }
   }

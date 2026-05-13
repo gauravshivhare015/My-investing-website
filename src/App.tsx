@@ -905,7 +905,7 @@ const parseDDMMYYYYtoISO = (val: string) => {
   return trimmed;
 };
 
-const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveFundHistoryToFirestore, saveToTransactions }: { user: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveFundHistoryToFirestore: (funds: any) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void> }) => {
+const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveFundHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore }: { user: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveFundHistoryToFirestore: (funds: any) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void> }) => {
   const { addToast } = useToasts();
   const [configStatus, setConfigStatus] = useState<any>({ configured: false, status: {} });
   const [isSyncing, setIsSyncing] = useState(false);
@@ -952,13 +952,14 @@ const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestor
 
       if (res.ok && data.status === 'success') {
         const mapped = data.holdings.map((h: any) => ({
-          name: h.tradingsymbol,
-          symboltoken: h.symboltoken,
-          exchange: h.exchange,
-          qty: Number(h.quantity),
-          avg: Number(h.averageprice),
-          ltp: Number(h.ltp),
-          pClose: Number(h.close || h.ltp)
+          name: h.tradingsymbol || h.symbol || h.mfname,
+          symboltoken: h.symboltoken || '',
+          exchange: h.exchange || 'N/A',
+          qty: Number(h.quantity || h.units || h.holdingqty || 0),
+          avg: Number(h.averageprice || h.avgprice || h.buyprice || 0),
+          ltp: Number(h.ltp || h.nav || 0),
+          pClose: Number(h.close || h.ltp || h.nav || 0),
+          type: h._source_type || (h.symboltoken ? 'EQUITY' : 'MF')
         }));
         for (const h of mapped) {
           await saveHoldingToFirestore(h);
@@ -979,11 +980,24 @@ const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestor
           await saveToTransactions(today, data.funds.payin || '0', data.funds.payout || '0');
         }
 
-        // Auto-save portfolio value on the 1st of any month
+        // Auto-save portfolio value to history
         const today = new Date();
-        if (today.getDate() === 1) {
-          const totalVal = mapped.reduce((acc: number, h: any) => acc + (h.qty * h.ltp), 0);
-          const dateStr = today.toISOString().split('T')[0];
+        const dateStr = today.toISOString().split('T')[0];
+        
+        // Calculate total value locally from mapped holdings for the history point
+        const calculatedTotal = mapped.reduce((acc: number, h: any) => acc + (h.qty * h.ltp), 0);
+        
+        // Use total value from API summary if available, or use our calculated total
+        let totalVal = 0;
+        if (data.holdings_summary && data.holdings_summary.totalholdingvalue) {
+            totalVal = Math.max(Number(data.holdings_summary.totalholdingvalue), calculatedTotal);
+            await saveApiSummaryToFirestore(data.holdings_summary);
+        } else {
+            totalVal = calculatedTotal;
+        }
+
+        if (totalVal > 0) {
+          console.log(`Auto-saving portfolio value to history: ${totalVal} for ${dateStr}`);
           await saveHistoryToFirestore(dateStr, totalVal);
         }
 
@@ -1169,26 +1183,12 @@ const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestor
   );
 };
 
-const HoldingsTable = ({ user }: { user: any }) => {
+const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
   const { addToast } = useToasts();
-  const [holdings, setHoldings] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!user) return;
-    const path = `artifacts/${appId}/users/${user.uid}/holdings`;
-    const q = query(collection(db, path));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setHoldings(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-    });
-    return () => unsubscribe();
-  }, [user]);
 
   const refreshPrices = async () => {
     if (holdings.length === 0) return;
@@ -1588,9 +1588,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
   const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
   const [prompts, setPrompts] = useState<any[]>([]);
+  const [holdings, setHoldings] = useState<any[]>([]);
   const [apiTrades, setApiTrades] = useState<any[]>([]);
   const [apiFunds, setApiFunds] = useState<any>(null);
   const [apiFundHistory, setApiFundHistory] = useState<any[]>([]);
+  const [apiSummary, setApiSummary] = useState<any>(null);
   const [files, setFiles] = useState<any[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -1652,6 +1654,8 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const filesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'files');
     const apiTradesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'api_trades');
     const apiFundsPath = doc(db, 'artifacts', appId, 'users', user.uid, 'api_funds', 'current');
+    const apiSummaryPath = doc(db, 'artifacts', appId, 'users', user.uid, 'api_summary', 'holdings');
+    const holdingsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'holdings');
 
     const apiFundHistoryPath = collection(db, 'artifacts', appId, 'users', user.uid, 'api_fund_history');
     
@@ -1691,7 +1695,13 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setApiFundHistory(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     }, (error) => handleFirestoreError(error, OperationType.LIST, apiFundHistoryPath.path));
-    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); unsubApiTrades(); unsubApiFunds(); unsubApiFundHistory(); };
+    const unsubApiSummary = onSnapshot(apiSummaryPath, (snapshot) => {
+      if (snapshot.exists()) setApiSummary(snapshot.data());
+    }, (error) => handleFirestoreError(error, OperationType.GET, apiSummaryPath.path));
+    const unsubHoldings = onSnapshot(holdingsPath, (snapshot) => {
+      setHoldings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, holdingsPath.path));
+    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); unsubApiTrades(); unsubApiFunds(); unsubApiFundHistory(); unsubHoldings(); unsubApiSummary(); };
   }, [user]);
 
   const updateCloudDoc = async (collName: string, id: string, data: any) => {
@@ -1955,7 +1965,22 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   };
 
   const metrics = useMemo(() => {
-    const curMV = validHistory.length > 0 ? Number(validHistory[validHistory.length - 1].marketValue) : 0;
+    const apiMV = apiSummary?.totalholdingvalue ? Number(apiSummary.totalholdingvalue) : 0;
+    
+    // Calculate live value from ALL holdings (synced or manual)
+    const holdingsMV = holdings.reduce((acc: number, h: any) => {
+      const val = (Number(h.qty) || 0) * (Number(h.ltp) || 0);
+      return acc + (isNaN(val) ? 0 : val);
+    }, 0);
+    
+    // We prefer the highest of the two: 
+    // 1. The total reported by API (which might include things we didn't fetch)
+    // 2. The sum of items we have in our list (including MF and manual)
+    const liveMV = Math.max(apiMV, holdingsMV);
+      
+    const histMV = validHistory.length > 0 ? Number(validHistory[validHistory.length - 1].marketValue) : 0;
+    const curMV = (liveMV > 0) ? liveMV : histMV;
+
     let net = 0; validTxns.forEach(t => net += (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0));
     let avgY = 0; if (validTxns.length > 0) { const years = Math.max(0.1, (new Date().getTime() - new Date(validTxns[0].date).getTime()) / (1000*60*60*24*365.25)); avgY = net / years; }
     const cashFlows = validTxns.map(t => ({ date: new Date(t.date), amount: (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0) }));
@@ -2001,7 +2026,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       f10: curMV*Math.pow(1+rate,10) + avgY*((Math.pow(1+rate,10)-1)/rate), 
       f20: curMV*Math.pow(1+rate,20) + avgY*((Math.pow(1+rate,20)-1)/rate) 
     };
-  }, [validTxns, validHistory, validBench]);
+  }, [validTxns, validHistory, validBench, holdings, apiSummary]);
 
   const chartData = useMemo(() => {
     const dates = Array.from(new Set([...validTxns.map(t => t.date), ...validHistory.map(p => p.date), ...validBench.map(b => b.date)])).sort();
@@ -2232,7 +2257,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="holdings">
-                <HoldingsTable user={user} />
+                <HoldingsTable user={user} holdings={holdings} />
               </div>
 
               {apiFunds && (
@@ -2308,6 +2333,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                           <tr>
                             <th className="p-4">Date</th>
                             <th className="p-4">Particulars</th>
+                            <th className="p-4">Voucher ID</th>
                             <th className="p-4 text-emerald-500">Deposit (Pay-in)</th>
                             <th className="p-4 text-rose-500">Withdrawal (Pay-out)</th>
                             <th className="p-4">Balance</th>
@@ -2318,9 +2344,12 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                             <tr key={h.id || idx} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors group">
                               <td className="p-4 font-mono">{h.date}</td>
                               <td className="p-4">
-                                <span className="text-[10px] md:text-xs font-medium text-zinc-600 dark:text-zinc-400 block max-w-[200px] truncate group-hover:whitespace-normal transition-all" title={h.particulars}>
+                                <span className="text-[10px] md:text-xs font-medium text-zinc-600 dark:text-zinc-400 block max-w-[150px] truncate group-hover:whitespace-normal transition-all" title={h.particulars}>
                                   {h.particulars || 'Fund Transfer'}
                                 </span>
+                              </td>
+                              <td className="p-4 font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
+                                {h.voucherno || h.vouchernumber || '-'}
                               </td>
                               <td className="p-4 font-bold text-emerald-600 dark:text-emerald-400">₹{h.payin}</td>
                               <td className="p-4 font-bold text-rose-600 dark:text-rose-400">₹{h.payout}</td>
@@ -2498,13 +2527,20 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                     saveToTransactions={async (date: string, deposit: string, withdrawal: string) => {
                       if (!user) return;
                       // We save it to the manual transactions collection
-                      const txnId = `api_txn_${date}`;
+                      const txnId = `api_txn_${date}_${Math.random().toString(36).substr(2, 5)}`;
                       await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/transactions`, txnId), {
                         id: txnId,
                         date: date,
                         deposit: Number(deposit),
                         withdrawal: Number(withdrawal),
                         source: 'AngelOne API'
+                      });
+                    }}
+                    saveApiSummaryToFirestore={async (summary: any) => {
+                      if (!user) return;
+                      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/api_summary`, 'holdings'), {
+                        ...summary,
+                        updatedAt: new Date().toISOString()
                       });
                     }}
                   />
