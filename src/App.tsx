@@ -1,16 +1,21 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, animate } from 'motion/react';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
+
+const formatAmt = (v: number) => {
+  if (v === undefined || v === null || isNaN(v)) return '0.00';
+  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(v);
+};
 import { 
   TrendingUp, IndianRupee, Activity, 
   Calendar, Wallet, ArrowUpRight, ArrowDownRight,
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
-  Copy, Check, MessageSquare, Search, Target, Sun, Moon,
+  Copy, Check, MessageSquare, Search, Target, Sun, Moon, Coins, Sparkles,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu
+  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu, Settings, RefreshCw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -638,7 +643,7 @@ const NumberTicker = ({ value }: { value: number }) => {
   return <span>{formatCurrency(displayValue)}</span>;
 };
 
-const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highlightColor = 'brand', delay = 0 }: any) => {
+const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highlightColor = 'brand', delay = 0, className = "" }: any) => {
   const colorMap: Record<string, string> = {
     brand: 'text-brand',
     cyan: 'text-cyan-400',
@@ -662,7 +667,7 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, delay, ease: [0.16, 1, 0.3, 1] }}
-      className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02] hover:bg-white/80 dark:hover:bg-white/[0.06]"
+      className={`relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02] hover:bg-white/80 dark:hover:bg-white/[0.06] ${className}`}
     >
       <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[1px] bg-white/0 ${lineGlow} blur-[1px] transition-all duration-500`} />
       <div className="flex items-center justify-between mb-3 md:mb-4">
@@ -905,11 +910,12 @@ const parseDDMMYYYYtoISO = (val: string) => {
   return trimmed;
 };
 
-const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveFundHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore }: { user: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveFundHistoryToFirestore: (funds: any) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void> }) => {
+const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveFundHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore }: { user: any, brokerSettings?: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveFundHistoryToFirestore: (funds: any) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void> }) => {
   const { addToast } = useToasts();
   const [configStatus, setConfigStatus] = useState<any>({ configured: false, status: {} });
   const [isSyncing, setIsSyncing] = useState(false);
   const [manualTotp, setManualTotp] = useState('');
+  const [isCredsModalOpen, setIsCredsModalOpen] = useState(false);
 
   useEffect(() => {
     const checkConfig = async () => {
@@ -935,10 +941,14 @@ const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestor
   const handleAngelOneSync = async () => {
     setIsSyncing(true);
     try {
+      const angelCreds = brokerSettings?.angelone?.credentials;
       const res = await fetch('/api/angelone/sync', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ manualTotp })
+        body: JSON.stringify({ 
+          manualTotp,
+          credentials: angelCreds
+        })
       });
       const status = res.status;
       const text = await res.text();
@@ -951,16 +961,30 @@ const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestor
       }
 
       if (res.ok && data.status === 'success') {
-        const mapped = data.holdings.map((h: any) => ({
-          name: h.tradingsymbol || h.symbol || h.mfname,
-          symboltoken: h.symboltoken || '',
-          exchange: h.exchange || 'N/A',
-          qty: Number(h.quantity || h.units || h.holdingqty || 0),
-          avg: Number(h.averageprice || h.avgprice || h.buyprice || 0),
-          ltp: Number(h.ltp || h.nav || 0),
-          pClose: Number(h.close || h.ltp || h.nav || 0),
-          type: h._source_type || (h.symboltoken ? 'EQUITY' : 'MF')
-        }));
+        const mapped = data.holdings.map((h: any) => {
+          const name = h.tradingsymbol || h.symbol || h.mfname || 'Unknown';
+          let type = h._source_type;
+          
+          // Override or set type based on name patterns
+          const upperName = name.toUpperCase();
+          if (upperName.startsWith('SGB') || upperName.includes('GOLD BOND')) {
+            type = 'SGB';
+          } else if (!type) {
+            if (h.symboltoken) type = 'EQUITY';
+            else type = 'MF';
+          }
+
+          return {
+            name,
+            symboltoken: h.symboltoken || '',
+            exchange: h.exchange || 'N/A',
+            qty: Number(h.quantity || h.units || h.holdingqty || 0),
+            avg: Number(h.averageprice || h.avgprice || h.buyprice || 0),
+            ltp: Number(h.ltp || h.nav || 0),
+            pClose: Number(h.close || h.ltp || h.nav || 0),
+            type: type
+          };
+        });
         for (const h of mapped) {
           await saveHoldingToFirestore(h);
         }
@@ -1146,93 +1170,698 @@ const AngelOneIntegration = ({ user, saveHoldingToFirestore, saveTradeToFirestor
                      <p className="text-blue-500 font-bold mb-1 uppercase tracking-tighter">2. Auth Failed / No Data?</p>
                      Double check your Client ID (e.g. S123456) and your Trading Password. API Key must be from a <span className="font-bold text-slate-900 dark:text-white">Trading Terminal</span> app type.
                   </div>
-               </div>
+                </div>
               </details>
             </div>
           </div>
         </div>
 
-        <button 
-          className={`w-full py-4.5 rounded-2.5xl font-black uppercase tracking-[0.25em] text-[11px] transition-all flex items-center justify-center gap-3 relative overflow-hidden group/btn ${
-            configStatus.configured 
-              ? 'bg-brand text-black shadow-[0_12px_24px_-8px_rgba(255,200,0,0.4)] hover:shadow-[0_16px_32px_-8px_rgba(255,200,0,0.5)] active:scale-[0.98]' 
-              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
-          }`}
-          onClick={configStatus.configured ? handleAngelOneSync : () => addToast("Missing Config", `Please add the following credentials in Settings:\n${missingKeys.join(", ")}`, "warning")}
-          disabled={isSyncing}
-        >
-          {isSyncing && (
-            <motion.div 
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-              className="w-4 h-4 border-2 border-current border-t-transparent rounded-full"
-            />
-          )}
-          {!isSyncing && configStatus.configured && <Activity size={16} className="group-hover/btn:scale-110 transition-transform" />}
-          
-          <span className="relative z-10">
-            {configStatus.configured ? (isSyncing ? 'Synchronizing...' : 'Sync Portfolio Now') : 'Configuration Required'}
-          </span>
-          
-          {configStatus.configured && !isSyncing && (
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-700" />
-          )}
-        </button>
+        <div className="flex gap-3">
+          <button 
+            className={`flex-1 py-4.5 rounded-2.5xl font-black uppercase tracking-[0.25em] text-[11px] transition-all flex items-center justify-center gap-3 relative overflow-hidden group/btn ${
+              (configStatus.configured || brokerSettings?.angelone)
+                ? 'bg-brand text-black shadow-[0_12px_24px_-8px_rgba(255,200,0,0.4)] hover:shadow-[0_16px_32px_-8px_rgba(255,200,0,0.5)] active:scale-[0.98]' 
+                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
+            }`}
+            onClick={(configStatus.configured || brokerSettings?.angelone) ? handleAngelOneSync : () => setIsCredsModalOpen(true)}
+            disabled={isSyncing}
+          >
+            {isSyncing && (
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                className="w-4 h-4 border-2 border-current border-t-transparent rounded-full"
+              />
+            )}
+            {!isSyncing && (configStatus.configured || brokerSettings?.angelone) && <Activity size={16} className="group-hover/btn:scale-110 transition-transform" />}
+            
+            <span className="relative z-10">
+              {(configStatus.configured || brokerSettings?.angelone) ? (isSyncing ? 'Synchronizing...' : 'Sync Portfolio Now') : 'Configuration Required'}
+            </span>
+            
+            {(configStatus.configured || brokerSettings?.angelone) && !isSyncing && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-700" />
+            )}
+          </button>
+
+          <button 
+            onClick={() => setIsCredsModalOpen(true)}
+            className="p-4.5 bg-brand/10 border border-brand/20 text-brand rounded-2.5xl hover:bg-brand/20 transition-all active:scale-95"
+            title="Configure Credentials"
+          >
+            <Settings size={20} />
+          </button>
+        </div>
       </div>
+      <BrokerCredentialsModal 
+        isOpen={isCredsModalOpen}
+        onClose={() => setIsCredsModalOpen(false)}
+        brokerId="angelone"
+        user={user}
+        currentSettings={brokerSettings?.angelone}
+      />
     </div>
   );
 };
 
-const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
+
+const BrokerCredentialsModal = ({ isOpen, onClose, brokerId, user, currentSettings }: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  brokerId: string, 
+  user: any,
+  currentSettings?: any
+}) => {
+  const [formData, setFormData] = useState<any>(currentSettings?.credentials || {});
+  const { addToast } = useToasts();
+
+  useEffect(() => {
+    if (currentSettings?.credentials) setFormData(currentSettings.credentials);
+  }, [currentSettings, isOpen]);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      const brokerRef = doc(db, 'artifacts', appId, 'users', user.uid, 'broker_settings', brokerId);
+      await setDoc(brokerRef, {
+        brokerId,
+        credentials: formData,
+        updatedAt: Date.now()
+      });
+      addToast("Credentials Saved", `${brokerId} credentials updated successfully.`, "success");
+      onClose();
+    } catch (e) {
+      addToast("Save Failed", "Could not save credentials to Firestore.", "error");
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="relative w-full max-w-sm bg-white dark:bg-[#0d0d0d] rounded-[2.5rem] border border-white/20 p-8 shadow-2xl overflow-hidden"
+      >
+        <div className="flex items-center gap-4 mb-8">
+          <div className="w-12 h-12 bg-brand rounded-2xl flex items-center justify-center text-white shadow-xl">
+            <Settings size={24} />
+          </div>
+          <div>
+            <h3 className="text-lg font-black uppercase tracking-tight text-slate-900 dark:text-white">Configure Angel One</h3>
+            <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Personal API Gateway</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Client ID</label>
+            <input 
+              type="text" 
+              value={formData.clientId || ''} 
+              onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+              placeholder="e.g. S123456" 
+              className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Trading Password</label>
+            <input 
+              type="password" 
+              value={formData.password || ''} 
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              placeholder="Enter Password" 
+              className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">API Key</label>
+            <input 
+              type="text" 
+              value={formData.apiKey || ''} 
+              onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+              placeholder="SmartAPI Key" 
+              className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">TOTP Secret</label>
+            <input 
+              type="text" 
+              value={formData.totpSecret || ''} 
+              onChange={(e) => setFormData({ ...formData, totpSecret: e.target.value })}
+              placeholder="16-character Secret" 
+              className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-3.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
+              required
+            />
+          </div>
+
+          <div className="pt-4 flex gap-3">
+             <button type="button" onClick={onClose} className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 dark:bg-white/5 rounded-2xl transition-all">Cancel</button>
+             <button type="submit" className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-white bg-brand shadow-brand/20 rounded-2xl shadow-xl transition-all active:scale-95">Save Config</button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
+const SgbPriceEditModal = ({ isOpen, onClose, onSave, holding }: { isOpen: boolean, onClose: () => void, onSave: (h: any) => void, holding: any }) => {
+  const [newPrice, setNewPrice] = useState('');
+
+  const [isAiLoading, setIsAiLoading] = useState(false);
+
+  useEffect(() => {
+    if (holding) setNewPrice(holding.ltp.toString());
+  }, [holding]);
+
+  const handleAiSuggestion = async () => {
+    if (!holding) return;
+    setIsAiLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Identify the absolute latest market price (LTP) for Indian Sovereign Gold Bond: ${holding.name}. Return ONLY the number. No other text. If not found, estimate based on 24k gold price.`,
+        config: { tools: [{ googleSearch: {} }] }
+      });
+      const text = response.text.trim();
+      const match = text.match(/\d+(\.\d+)?/);
+      if (match) {
+        setNewPrice(match[0]);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPrice || isNaN(Number(newPrice))) return;
+    onSave({ ...holding, ltp: Number(newPrice), isAiVerified: isAiLoading });
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+            className="bg-white dark:bg-[#0d0d0d] rounded-3xl border border-black/10 dark:border-white/10 w-full max-w-sm overflow-hidden shadow-2xl relative"
+          >
+            <div className="p-6 md:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-brand/10 rounded-xl text-brand">
+                  <Activity size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Correct Price</h3>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{holding?.name}</p>
+                </div>
+              </div>
+              
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-2">Market Price (LTP)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={newPrice}
+                      onChange={(e) => setNewPrice(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl px-5 py-4 text-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/50 transition-all font-mono font-bold"
+                      autoFocus
+                    />
+                    <div className="absolute right-14 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                      <div className="text-zinc-400 font-mono text-sm">₹</div>
+                      <button
+                        type="button"
+                        onClick={handleAiSuggestion}
+                        disabled={isAiLoading}
+                        className="p-2 bg-brand/10 text-brand rounded-lg hover:bg-brand hover:text-white transition-all disabled:opacity-50"
+                        title="Search current price with Gemini AI"
+                      >
+                        {isAiLoading ? (
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Sparkles size={14} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-brand text-white shadow-xl shadow-brand/20 hover:scale-105 active:scale-95 transition-all"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boolean, onClose: () => void, onSave: (h: any) => void, brandColor: string }) => {
+  const [name, setName] = useState('');
+  const [qty, setQty] = useState('');
+  const [avg, setAvg] = useState('');
+  const [ltp, setLtp] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleSearch = async () => {
+    if (!name || name.length < 3) return;
+    setIsSearching(true);
+    try {
+      const res = await fetch(`/api/market/search?query=${encodeURIComponent(name.toUpperCase())}`);
+      const result = await res.json();
+      if (res.ok && result.data) {
+        // Filter for SGBs or Gold related symbols
+        setSearchResults(result.data.filter((d: any) => 
+          d.tradingsymbol.toUpperCase().includes('SGB') || 
+          d.tradingsymbol.toUpperCase().includes('GOLD')
+        ));
+      }
+    } catch (e) {
+      console.error("Search failed", e);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const selectSymbol = (s: any) => {
+    setName(s.tradingsymbol);
+    setSearchResults([]);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !qty || !avg) return;
+    onSave({
+      name: name.toUpperCase(),
+      qty: Number(qty),
+      avg: Number(avg),
+      ltp: Number(ltp || avg),
+      pClose: Number(ltp || avg),
+      type: 'SGB',
+      exchange: 'NSE',
+      source: 'manual'
+    });
+    setName('');
+    setQty('');
+    setAvg('');
+    setLtp('');
+    setSearchResults([]);
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+            className="bg-white dark:bg-[#0d0d0d] rounded-3xl border border-black/10 dark:border-white/10 w-full max-w-md overflow-hidden shadow-2xl relative"
+          >
+            <div className="p-6 md:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-amber-500/10 rounded-xl text-amber-500">
+                  <Coins size={24} />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Manual SGB Entry</h3>
+              </div>
+              
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="relative">
+                  <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-2">SGB Name / Symbol</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. SGBNOV28"
+                      className="flex-1 bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl px-5 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all font-bold uppercase"
+                      required
+                    />
+                    <button 
+                      type="button"
+                      onClick={handleSearch}
+                      disabled={isSearching}
+                      className="px-4 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-2xl text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                    >
+                      {isSearching ? '...' : 'Verify'}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={async () => {
+                        if (!name) return;
+                        setIsSearching(true);
+                        try {
+                          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+                          const response = await ai.models.generateContent({
+                            model: "gemini-3-flash-preview",
+                            contents: `Find the absolute latest market price for SGB titled: ${name}. Only return the numeric price.`,
+                            config: { tools: [{ googleSearch: {} }] }
+                          });
+                          const match = response.text.match(/\d+(\.\d+)?/);
+                          if (match) setLtp(match[0]);
+                        } catch(e) {} finally { setIsSearching(false); }
+                      }}
+                      disabled={isSearching || !name}
+                      className="p-3 bg-amber-500/10 text-amber-500 rounded-2xl hover:bg-amber-500 hover:text-white transition-all disabled:opacity-50"
+                      title="Fetch Live Price with Gemini AI"
+                    >
+                      <Sparkles size={14} />
+                    </button>
+                  </div>
+                  
+                  {searchResults.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-10 mt-2 bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl max-h-48 overflow-y-auto p-2">
+                       {searchResults.map((s, i) => (
+                         <div 
+                           key={i} 
+                           onClick={() => selectSymbol(s)}
+                           className="p-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl cursor-pointer transition-colors border-b border-black/5 last:border-0"
+                         >
+                            <p className="text-[10px] font-black text-slate-900 dark:text-white">{s.tradingsymbol}</p>
+                            <p className="text-[8px] text-zinc-500">{s.exchange} | {s.isin}</p>
+                         </div>
+                       ))}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-2">Quantity (Units)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={qty}
+                      onChange={(e) => setQty(e.target.value)}
+                      placeholder="0"
+                      className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl px-5 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-2">Avg Buy Price</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={avg}
+                      onChange={(e) => setAvg(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl px-5 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all font-mono"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-2">Current Price (Optional)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={ltp}
+                    onChange={(e) => setLtp(e.target.value)}
+                    placeholder="Defaults to Avg Price"
+                    className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl px-5 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all font-mono"
+                  />
+                  <p className="text-[9px] text-zinc-500 mt-2 italic">* Use "Live Refresh" on dashboard to update market prices later if ticker matches.</p>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-amber-500 text-white shadow-xl shadow-amber-500/20 hover:scale-105 active:scale-95 transition-all"
+                  >
+                    Add to Portfolio
+                  </button>
+                </div>
+              </form>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void> }) => {
   const { addToast } = useToasts();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [editingSgb, setEditingSgb] = useState<any>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Automatically trigger refresh if we have SGBs with missing or 0 prices
+    if (holdings.length > 0 && !isRefreshingPrices) {
+      const needsAiRefresh = holdings.some(h => 
+        h.type === 'SGB' && (!h.ltp || h.ltp === 0 || !h.symboltoken)
+      );
+      
+      if (needsAiRefresh) {
+        const timer = setTimeout(() => {
+           refreshPrices();
+        }, 1000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [holdings.length]); // Watch length to trigger on new additions
+
+  const resolveSgbToken = async (sgb: any) => {
+    try {
+      // Clean up the name for better searching
+      // e.g. "SGB MAY 2029" -> "SGBMAY29"
+      let searchTerm = sgb.name.toUpperCase()
+        .replace(/SOVEREIGN GOLD BOND/g, 'SGB')
+        .replace(/\s+/g, '')
+        .replace(/SERIES[IVX]+/g, '')
+        .trim();
+      
+      const searchRes = await fetch(`/api/market/search?query=${encodeURIComponent(searchTerm)}`);
+      const searchResult = await searchRes.json();
+      
+      if (searchRes.ok && searchResult.data && searchResult.data.length > 0) {
+        const matches = searchResult.data;
+        // Priority 1: Exact match with -GB (NSE standard for SGBs)
+        // Priority 2: Exact match name
+        // Priority 3: Contains name and GB
+        const match = matches.find((d: any) => d.tradingsymbol.toUpperCase() === `${searchTerm}-GB`) ||
+                      matches.find((d: any) => d.tradingsymbol.toUpperCase() === searchTerm) ||
+                      matches.find((d: any) => d.tradingsymbol.toUpperCase().includes(searchTerm) && d.tradingsymbol.toUpperCase().includes('GB')) ||
+                      matches.find((d: any) => d.tradingsymbol.toUpperCase().includes(searchTerm)) ||
+                      matches[0];
+
+        if (match) {
+          console.log(`Resolved SGB ${sgb.name} to ${match.symboltoken} on ${match.exchange} (${match.tradingsymbol})`);
+          const updatedSgb = { 
+            ...sgb, 
+            symboltoken: match.symboltoken, 
+            exchange: match.exchange || 'NSE',
+            name: match.tradingsymbol.replace('-GB', '') // Normalize name to trading symbol
+          };
+          
+          return updatedSgb;
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to resolve SGB ${sgb.name}:`, e);
+    }
+    return sgb;
+  };
+
+  const getSgbIntelligenceWithGemini = async (sgbs: any[]) => {
+    try {
+      if (!process.env.GEMINI_API_KEY) {
+        console.warn("GEMINI_API_KEY is missing from environment variables.");
+        return null;
+      }
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      const sgbNames = sgbs.map(s => s.name).join(', ');
+      addToast("AI Intelligence", "Consulting Gemini for SGB market estimates...", "info");
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Identify the absolute latest market Last Traded Price (LTP) from today's real-time trading for THESE Indian Sovereign Gold Bonds (SGBs): ${sgbNames}. 
+           Search Google for the most recent NSE/BSE gold bond prices. 
+           Return a JSON array of objects with 'name' and 'ltp'. 
+           Include the 'name' EXACTLY as provided in input.
+           If the bond has low liquidity today, estimate the price based on the current market 24k gold price per gram.`,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                ltp: { type: Type.NUMBER }
+              },
+              required: ["name", "ltp"]
+            }
+          }
+        },
+      });
+
+      try {
+        const text = response.text.trim();
+        return JSON.parse(text);
+      } catch (e) {
+        console.error("Failed to parse Gemini SGB intelligence", e);
+        return null;
+      }
+    } catch (e) {
+      console.error("Gemini SGB Intelligence Error", e);
+      return null;
+    }
+  };
 
   const refreshPrices = async () => {
     if (holdings.length === 0) return;
     setIsRefreshingPrices(true);
     try {
-      const tokens = holdings
-        .filter(h => h.symboltoken && h.exchange)
+      // Step 1: Identify SGBs that might need token resolution (missing token or generic name)
+      const sgbToResolve = holdings.filter(h => 
+        h.type === 'SGB' && (!h.symboltoken || h.name.length > 15 || h.name.includes(' '))
+      );
+      
+      const workingHoldings = [...holdings];
+
+      if (sgbToResolve.length > 0) {
+        addToast("Resolving SGBs", `Identifying market symbols for ${sgbToResolve.length} SGBs...`, "info");
+        for (const sgb of sgbToResolve) {
+          const resolved = await resolveSgbToken(sgb);
+          if (resolved.symboltoken && resolved.symboltoken !== sgb.symboltoken) {
+            await onSaveHolding(resolved);
+            // Update local working set
+            const idx = workingHoldings.findIndex(h => h.id === sgb.id);
+            if (idx !== -1) workingHoldings[idx] = resolved;
+          }
+        }
+      }
+
+      const tokens = workingHoldings
+        .filter(h => h.type !== 'SGB' && h.symboltoken && h.exchange)
         .map(h => ({ 
           symboltoken: h.symboltoken, 
           exchange: h.exchange, 
           tradingsymbol: h.name 
         }));
 
-      if (tokens.length === 0) {
-        addToast("No Tokens FOUND", "Please sync from Angel One first to enable live prices.", "warning");
-        return;
-      }
+      let apiUpdateCount = 0;
+      let apiFetchedTokens: Set<string> = new Set();
 
-      const res = await fetch('/api/market/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokens })
-      });
+      if (tokens.length > 0) {
+        const res = await fetch('/api/market/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokens })
+        });
 
-      const result = await res.json();
-      if (res.ok && result.status === 'success' && result.data && result.data.fetched) {
-        const fetchedData = result.data.fetched; // Array of items
-        
-        for (const item of fetchedData) {
-          const holding = holdings.find(h => h.symboltoken === item.symboltoken);
-          if (holding) {
-             await saveHoldingToFirestore({
-               ...holding,
-               ltp: Number(item.ltp)
-             });
+        const result = await res.json();
+        if (res.ok && result.status === 'success' && result.data && result.data.fetched) {
+          const fetchedData = result.data.fetched;
+          
+          for (const item of fetchedData) {
+            const holding = workingHoldings.find(h => h.symboltoken === item.symboltoken && h.exchange === item.exchange);
+            if (holding) {
+               const newLtp = Number(item.ltp);
+               if (newLtp > 0) {
+                  apiFetchedTokens.add(item.symboltoken);
+                  const updateData: any = { ...holding, ltp: newLtp, isAiVerified: false };
+                  if (item.close && Number(item.close) > 0) {
+                    updateData.pClose = Number(item.close);
+                  }
+                  await onSaveHolding(updateData);
+                  apiUpdateCount++;
+               }
+            }
           }
         }
-        addToast("Prices Updated", "Live market prices refreshed successfully.", "success");
-      } else {
-        addToast("Refresh Failed", result.error || "Could not retrieve live market data.", "error");
       }
+
+      // Step 3: Gemini Search for ALL SGBs (Primary source for SGB as requested)
+      const sgbsToUpdate = workingHoldings.filter(h => h.type === 'SGB');
+
+      if (sgbsToUpdate.length > 0) {
+        const aiPrices = await getSgbIntelligenceWithGemini(sgbsToUpdate);
+        if (aiPrices && Array.isArray(aiPrices)) {
+          let aiUpdateCount = 0;
+          for (const aiPrice of aiPrices) {
+            const holding = sgbsToUpdate.find(h => h.name === aiPrice.name);
+            if (holding && aiPrice.ltp > 0) {
+              await onSaveHolding({
+                ...holding,
+                ltp: aiPrice.ltp,
+                isAiVerified: true,
+                updatedAt: new Date().toISOString()
+              });
+              aiUpdateCount++;
+            }
+          }
+          if (aiUpdateCount > 0) {
+            addToast("AI Market Sync", `Fetched live prices for ${aiUpdateCount} SGBs via Google AI Search.`, "success");
+          }
+        }
+      }
+
+      const totalUpdated = apiUpdateCount + (sgbsToUpdate.length > 0 ? sgbsToUpdate.length : 0);
+      addToast("Portfolio Updated", `Synced ${totalUpdated} assets using API and AI intelligence.`, "success");
     } catch (err) {
       console.error(err);
-      addToast("Network Error", (err as Error).message, "error");
+      addToast("Update Failed", (err as Error).message, "error");
     } finally {
       setIsRefreshingPrices(false);
     }
@@ -1244,27 +1873,6 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
       direction = 'asc';
     }
     setSortConfig({ key, direction });
-  };
-
-  const saveHoldingToFirestore = async (holding: any) => {
-    if (!user) return;
-    // Use a stable ID based on symboltoken (API) or name (Manual/Gemini)
-    const stableId = (holding.symboltoken && holding.exchange) 
-      ? `holding_${holding.symboltoken}_${holding.exchange}`
-      : (holding.symboltoken)
-        ? `holding_${holding.symboltoken}`
-        : `holding_${(holding.name || 'unknown').replace(/\s+/g, '_').toUpperCase()}`;
-    
-    const holdingId = holding.id || stableId;
-    const path = `artifacts/${appId}/users/${user.uid}/holdings/${holdingId}`;
-    try {
-      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/holdings`, holdingId), {
-        ...holding,
-        id: holdingId
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
   };
 
   const processImageWithGemini = async (base64Data: string, mimeType: string) => {
@@ -1281,7 +1889,7 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
             {
                inlineData: { data: base64Data.split(',')[1] || base64Data, mimeType }
             },
-            "Extract the stock holdings from this image or text. For each holding, extract the stock name, quantity (number of shares), average price/investment price, last traded price (LTP) or current price, and previous close (if available; otherwise calculate based on day change or default to LTP)."
+            "Extract the stock and Sovereign Gold Bond (SGB) holdings from this image or text. For each holding, extract: name (SGB name like SGBNOV28 or Stock symbol), quantity, average price, last traded price (LTP), and previous close. Also identify the 'type' (EQUITY or SGB)."
         ],
         config: {
           responseMimeType: "application/json",
@@ -1290,13 +1898,14 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
             items: {
               type: Type.OBJECT,
               properties: {
-                name: { type: Type.STRING, description: "Stock symbol or name" },
-                qty: { type: Type.NUMBER, description: "Quantity of shares" },
-                avg: { type: Type.NUMBER, description: "Average price" },
-                ltp: { type: Type.NUMBER, description: "Last traded price" },
-                pClose: { type: Type.NUMBER, description: "Previous close price" }
+                name: { type: Type.STRING, description: "Stock symbol or SGB name (e.g. SGBMAY29)" },
+                qty: { type: Type.NUMBER, description: "Quantity of units/shares" },
+                avg: { type: Type.NUMBER, description: "Average acquisition price" },
+                ltp: { type: Type.NUMBER, description: "Last traded/current market price" },
+                pClose: { type: Type.NUMBER, description: "Previous close price" },
+                type: { type: Type.STRING, enum: ["EQUITY", "SGB", "MUTUAL_FUND"], description: "Type of asset" }
               },
-              required: ["name", "qty", "avg", "ltp", "pClose"]
+              required: ["name", "qty", "avg", "ltp", "pClose", "type"]
             }
           }
         }
@@ -1305,8 +1914,24 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
       if (jsonStr) {
           const newHoldings = JSON.parse(jsonStr);
           if (newHoldings.length > 0) {
-             for (const h of newHoldings) {
-                await saveHoldingToFirestore(h);
+             addToast("Resolving Assets", "AI extracted data. Now resolving market identifiers...", "info");
+             const processedHoldings = [];
+             for (let h of newHoldings) {
+                // Heuristic: If name looks like SGB but type is EQUITY, fix it
+                if (h.name.toUpperCase().includes('SGB') && h.type === 'EQUITY') {
+                  h.type = 'SGB';
+                }
+
+                if (h.type === 'SGB') {
+                  const resolved = await resolveSgbToken(h);
+                  processedHoldings.push(resolved);
+                } else {
+                  processedHoldings.push(h);
+                }
+             }
+
+             for (const h of processedHoldings) {
+                await onSaveHolding(h);
              }
              addToast("Import Successful", `Successfully extracted ${newHoldings.length} holdings.`, "success");
           } else {
@@ -1393,8 +2018,6 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
     return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-brand" /> : <ChevronDown size={10} className="ml-1 text-brand" />;
   };
 
-  const formatAmt = (v: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(v);
-
   return (
     <div 
       className="bg-white/40 dark:bg-[#0d0d0d]/40 backdrop-blur-xl rounded-[2rem] p-6 md:p-8 overflow-hidden mt-8 border border-white/20 dark:border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] focus:outline-none focus:ring-4 focus:ring-brand/10 transition-all duration-500 relative"
@@ -1437,9 +2060,12 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
               {isRefreshingPrices ? (
                 <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Activity size={14} className="group-hover:animate-pulse" />
+                <div className="relative">
+                  <Activity size={14} className="group-hover:animate-pulse" />
+                  <Sparkles size={8} className="absolute -top-1.5 -right-1.5 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
               )}
-              <span className="hidden sm:inline">{isRefreshingPrices ? 'Updating...' : 'Live Refresh'}</span>
+              <span className="hidden sm:inline">{isRefreshingPrices ? 'Updating...' : 'Live Refresh + AI'}</span>
            </button>
            
            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800 hidden sm:block" />
@@ -1452,6 +2078,15 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
               <Cpu size={14} className="group-hover:rotate-12 transition-transform" />
               <span className="hidden sm:inline">{isProcessing ? 'Processing...' : 'AI Import'}</span>
            </button>
+
+           <button 
+             onClick={() => setIsManualModalOpen(true)}
+             className="px-6 py-3 text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 active:scale-95 transition-all flex items-center gap-3 border border-amber-500/20 shadow-lg shadow-amber-500/5 group"
+           >
+              <Coins size={14} className="group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline">Add SGB</span>
+           </button>
+
            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
         </div>
       </div>
@@ -1500,28 +2135,84 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
                     opacity: { duration: 0.2 },
                     x: { type: "spring", stiffness: 300, damping: 30, delay: idx * 0.03 }
                   }}
-                  className="group bg-white/60 dark:bg-white/[0.03] backdrop-blur-sm hover:bg-white/80 dark:hover:bg-white/[0.06] transition-all duration-300 ring-1 ring-black/5 dark:ring-white/5 hover:ring-brand/30 rounded-2xl overflow-hidden"
+                  className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-all duration-300 ring-1 hover:ring-brand/30 rounded-2xl overflow-hidden`}
                 >
                   <td className="px-6 py-5 first:rounded-l-2xl">
-                    <div 
-                      className="flex items-center gap-3 font-bold text-slate-900 dark:text-white font-sans cursor-pointer group/ticker"
-                      onClick={() => handleDeleteHolding(row)}
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center text-[10px] font-black group-hover/ticker:bg-rose-500 group-hover/ticker:text-white transition-all duration-300 shadow-sm border border-brand/10 group-hover/ticker:border-rose-500/20">
-                        {row.name.substring(0, 2).toUpperCase()}
+                    <div className="flex items-center gap-3 font-bold text-slate-900 dark:text-white font-sans group/ticker relative">
+                      <div className={`w-8 h-8 rounded-xl ${row.type === 'SGB' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-[10px] font-black shadow-sm border`}>
+                        {row.type === 'SGB' ? <Coins size={14} /> : row.name.substring(0, 2).toUpperCase()}
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-xs tracking-tight group-hover/ticker:text-rose-500 transition-colors uppercase">{row.name}</span>
-                        <div className="flex items-center gap-1 opacity-0 group-hover/ticker:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs tracking-tight uppercase">{row.name}</span>
+                          {row.type === 'SGB' && (
+                            <span className="text-[7px] font-black tracking-widest uppercase bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-full ring-1 ring-amber-500/20">Sovereign Gold</span>
+                          )}
+                          {row.type === 'SGB' && row.isAiVerified && (
+                            <span className="text-[7px] font-black tracking-widest uppercase bg-brand/10 text-brand px-1.5 py-0.5 rounded-full ring-1 ring-brand/20 flex items-center gap-1 shadow-sm">
+                              <Sparkles size={8} /> AI Active
+                            </span>
+                          )}
+                        </div>
+                        <div 
+                          className="flex items-center gap-1 opacity-0 group-hover/ticker:opacity-100 transition-all cursor-pointer hover:text-rose-600 active:scale-95 mt-0.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Are you sure you want to remove ${row.name}?`)) {
+                              handleDeleteHolding(row);
+                            }
+                          }}
+                        >
                           <Trash2 size={10} className="text-rose-500" />
-                          <span className="text-[8px] text-rose-500 font-black tracking-widest uppercase">Terminate</span>
+                          <span className="text-[8px] text-rose-500 font-black tracking-widest uppercase border-b border-rose-500/20">Terminate</span>
                         </div>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">{row.qty}</td>
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.avg)}</td>
-                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-bold">₹{formatAmt(row.ltp)}</td>
+                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-bold group/price">
+                      <div 
+                        className={`flex items-center justify-end gap-2 ${row.type === 'SGB' ? 'cursor-pointer hover:text-amber-500 transition-colors' : ''}`}
+                        onClick={() => row.type === 'SGB' && setEditingSgb(row)}
+                      >
+                         <div className="flex flex-col items-end">
+                           <div className="flex items-center gap-1.5">
+                              <span 
+                                className={`${row.type === 'SGB' ? 'border-b border-dashed border-amber-500/40 pb-0.5' : ''} cursor-help`}
+                                title={row.type === 'SGB' ? "Click to refresh this SGB with Gemini AI" : ""}
+                              >₹{formatAmt(row.ltp)}</span>
+                              {row.isAiVerified && (
+                                <Sparkles size={10} className="text-brand animate-pulse" />
+                              )}
+                              {row.type === 'SGB' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    refreshPrices();
+                                  }}
+                                  disabled={isRefreshingPrices}
+                                  className="p-1 hover:bg-amber-500/10 rounded-md transition-colors text-amber-500/60 hover:text-amber-500"
+                                  title="Sync Market Intel"
+                                >
+                                  <RefreshCw size={10} className={isRefreshingPrices ? 'animate-spin' : ''} />
+                                </button>
+                              )}
+                           </div>
+                           {row.isAiVerified && (
+                             <span className="text-[6px] font-black text-brand uppercase tracking-widest mt-0.5 opacity-60">AI Life-Tracked</span>
+                           )}
+                         </div>
+                       {row.type === 'SGB' && (
+                         <div 
+                           className="p-1.5 bg-amber-500/10 text-amber-500 rounded-lg group-hover/price:bg-amber-500 group-hover/price:text-white transition-all duration-200"
+                           title="Correct Price"
+                         >
+                           <Palette size={10} />
+                         </div>
+                       )}
+                    </div>
+                  </td>
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.inv)}</td>
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">₹{formatAmt(row.cur)}</td>
                   <td className="px-6 py-5 text-right last:rounded-r-2xl">
@@ -1550,6 +2241,408 @@ const HoldingsTable = ({ user, holdings }: { user: any, holdings: any[] }) => {
             </AnimatePresence>
           </tbody>
         </table>
+      </div>
+      <ManualSgbModal 
+        isOpen={isManualModalOpen} 
+        onClose={() => setIsManualModalOpen(false)} 
+        onSave={onSaveHolding}
+        brandColor={brandColor}
+      />
+      <SgbPriceEditModal
+        isOpen={!!editingSgb}
+        onClose={() => setEditingSgb(null)}
+        onSave={onSaveHolding}
+        holding={editingSgb}
+      />
+    </div>
+  );
+};
+
+const SgbMarketExplorer = ({ brandColor, onSaveHolding }: { brandColor: string, onSaveHolding: (h: any) => Promise<void> }) => {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState('');
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const { addToast } = useToasts();
+
+  const fetchSgbMarket = useCallback(async (customTerm?: string) => {
+    setLoading(true);
+    try {
+      const url = customTerm 
+        ? `/api/market/sgb-explorer?query=${encodeURIComponent(customTerm)}`
+        : '/api/market/sgb-explorer';
+      const res = await fetch(url);
+      const result = await res.json();
+      if (res.ok && result.data) {
+        // If we have a custom term, prioritize it by sorting matched symbols first
+        const sorted = result.data.sort((a: any, b: any) => {
+          if (customTerm) {
+            const aMatch = a.symbol.toUpperCase().includes(customTerm.toUpperCase());
+            const bMatch = b.symbol.toUpperCase().includes(customTerm.toUpperCase());
+            if (aMatch && !bMatch) return -1;
+            if (!aMatch && bMatch) return 1;
+          }
+          return b.volume - a.volume;
+        });
+        setData(sorted);
+        setLastRefreshed(new Date());
+      } else {
+        addToast("Explorer Error", result.error || "Market data unavailable.", "error");
+      }
+    } catch (e) {
+      addToast("Connection Error", "Failed to reach explorer API.", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
+
+  const handleGeminiSearch = async () => {
+    if (!filter || filter.length < 3) {
+      addToast("AI Insight", "Type a generic query first (e.g. 'bonds for 2029')", "info");
+      return;
+    }
+    
+    setIsGeminiLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `You are an expert on Indian Sovereign Gold Bonds (SGB). 
+        The user typed: "${filter}". 
+        Identify the likely SGB series names/symbols they are looking for. 
+        SGB symbols usually follow the format SGBAUG28, SGBMAY29, etc. 
+        Sometimes they have Roman numerals like SGBAUG28V or are listed as "Sovereign Gold Bond 2028-29 Series V".
+        Return ONLY the most likely Angel One trading symbol (e.g. SGBAUG28V or SGBAUG28), or the top 3 symbols if multiple match, separated by commas. 
+        NO EXPLANATION. JUST SYMBOLS.`,
+      });
+      
+      const suggestion = response.text?.trim() || "";
+      if (suggestion) {
+        const topSymbol = suggestion.split(',')[0].trim().toUpperCase();
+        setFilter(topSymbol);
+        fetchSgbMarket(topSymbol);
+        addToast("AI Thinking", `Identified Series: ${suggestion}. Querying exchanges...`, "success");
+      }
+    } catch (e) {
+      console.error(e);
+      addToast("Gemini Error", "Could not connect to AI brain.", "error");
+    } finally {
+      setIsGeminiLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSgbMarket();
+  }, [fetchSgbMarket]);
+
+  const filteredData = useMemo(() => {
+    if (!filter) return data;
+    const f = filter.toUpperCase();
+    return data.filter(s => 
+      s.symbol.toUpperCase().includes(f) || 
+      s.name.toUpperCase().includes(f)
+    );
+  }, [data, filter]);
+
+  const handleQuickAdd = async (sgb: any) => {
+    const qty = window.prompt(`How many units of ${sgb.symbol} do you hold?`, "1");
+    if (qty === null) return;
+    
+    const qtyNum = parseInt(qty);
+    if (isNaN(qtyNum) || qtyNum <= 0) return;
+
+    const avg = window.prompt(`Average purchase price for ${sgb.symbol}?`, sgb.ltp.toString());
+    if (avg === null) return;
+
+    const avgNum = parseFloat(avg);
+    if (isNaN(avgNum) || avgNum <= 0) return;
+
+    try {
+      await onSaveHolding({
+        name: sgb.symbol.replace("-GB", ""),
+        qty: qtyNum,
+        avg: avgNum,
+        ltp: sgb.ltp,
+        pClose: sgb.pClose || sgb.ltp,
+        type: 'SGB',
+        symboltoken: sgb.token,
+        exchange: sgb.exchange
+      });
+      addToast("Asset Added", `${sgb.symbol} added to your holdings.`, "success");
+    } catch (e) {
+      addToast("Add Failed", "Could not add to holdings.", "error");
+    }
+  };
+
+  const SGB_SERIES_SUGGESTIONS = [
+    { label: "AUG 28 V", value: "AUG28V" },
+    { label: "NOV 28 VIII", value: "N28VIII" },
+    { label: "DEC 30 III", value: "DE30III" },
+    { label: "SERIES 2028", value: "SGB28" },
+    { label: "SERIES 2029", value: "SGB29" }
+  ];
+
+  return (
+    <div id="sgb-market-explorer" className="bg-[#0A0A0A] rounded-3xl border border-white/10 overflow-hidden shadow-2xl ring-1 ring-white/5 transition-all duration-500">
+      {/* Live Status Header */}
+      <div className="bg-amber-500/5 border-b border-white/5 px-6 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-500' : 'bg-emerald-500'} animate-pulse`} />
+          </div>
+          <span className="text-[9px] font-black font-mono text-zinc-500 uppercase tracking-widest">
+            {loading ? 'CONNECTING TO EXCHANGES...' : 'LIVE MARKET FEED ACTIVE'}
+          </span>
+        </div>
+        {lastRefreshed && (
+          <span className="text-[8px] font-mono font-black text-zinc-600 uppercase">
+            SYNCED: {lastRefreshed.toLocaleTimeString()}
+          </span>
+        )}
+      </div>
+      {/* Ticker Tape */}
+      <div className="bg-black/40 border-b border-white/5 py-2 overflow-hidden whitespace-nowrap relative">
+        <div className="inline-block animate-marquee flex items-center gap-10">
+          {data.slice(0, 20).map((s, i) => (
+            <div key={i} className="inline-flex items-center gap-2 group cursor-pointer hover:bg-white/5 px-2 rounded transition-colors">
+              <span className="text-[9px] font-black font-mono text-zinc-500 uppercase">{s.symbol}</span>
+              <span className="text-[10px] font-bold font-mono text-white">₹{formatAmt(s.ltp)}</span>
+              <span className={`text-[8px] font-black ${s.percentChange >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                {s.percentChange >= 0 ? '▲' : '▼'}{Math.abs(s.percentChange).toFixed(1)}%
+              </span>
+            </div>
+          ))}
+          {/* Duplicate for seamless effect */}
+          {data.slice(0, 20).map((s, i) => (
+            <div key={`dup-${i}`} className="inline-flex items-center gap-2 group cursor-pointer hover:bg-white/5 px-2 rounded transition-colors">
+              <span className="text-[9px] font-black font-mono text-zinc-500 uppercase">{s.symbol}</span>
+              <span className="text-[10px] font-bold font-mono text-white">₹{formatAmt(s.ltp)}</span>
+              <span className={`text-[8px] font-black ${s.percentChange >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                {s.percentChange >= 0 ? '▲' : '▼'}{Math.abs(s.percentChange).toFixed(1)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-6 md:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-white/5">
+        <div className="flex items-center gap-5">
+          <div className="w-14 h-14 bg-amber-500 text-black rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.3)]">
+            <TrendingUp size={28} strokeWidth={3} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-black uppercase tracking-[0.3em] text-amber-500/80">SGB Market Intelligence</h4>
+              <div className="h-0.5 w-12 bg-white/10" />
+            </div>
+            <h2 className="text-3xl font-black text-white tracking-tighter uppercase italic -mt-1">
+              Active <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-white/40">Bonds</span>
+            </h2>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative group/search">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within/search:text-amber-500 transition-colors">
+              <Search size={14} />
+            </div>
+            <input 
+              type="text"
+              placeholder="FILTER BY SERIES (MONTH/YEAR)..."
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && filter.length > 2) {
+                  fetchSgbMarket(filter);
+                }
+              }}
+              className="bg-white/5 border border-white/10 rounded-xl px-10 py-2.5 text-[10px] font-black font-mono text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all w-full md:w-80"
+            />
+            <button 
+              onClick={handleGeminiSearch}
+              disabled={isGeminiLoading}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-400 transition-all hover:scale-110 disabled:opacity-30 disabled:animate-pulse"
+              title="AI Smart Search"
+            >
+              <Sparkles size={16} fill={isGeminiLoading ? 'currentColor' : 'none'} />
+            </button>
+            <div className="flex flex-wrap gap-2 mt-3 ml-1">
+              <span className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mt-1 mr-1">Trending:</span>
+              {SGB_SERIES_SUGGESTIONS.map(tag => (
+                <button 
+                  key={tag.value}
+                  onClick={() => {
+                    setFilter(tag.value);
+                    fetchSgbMarket(tag.value);
+                  }}
+                  className={`px-2 py-0.5 rounded-full border text-[7px] font-black transition-all uppercase tracking-widest ${
+                    filter.toUpperCase().includes(tag.value) 
+                    ? 'bg-amber-500 border-amber-500 text-black' 
+                    : 'bg-white/5 border-white/10 text-zinc-500 hover:text-white hover:border-white/20'
+                  }`}
+                >
+                  {tag.label}
+                </button>
+              ))}
+              {filter && (
+                <button 
+                  onClick={() => setFilter('')}
+                  className="px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[7px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          <button 
+            onClick={() => fetchSgbMarket()}
+            disabled={loading}
+            className="flex items-center gap-3 px-6 py-2.5 rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-amber-500 hover:text-black hover:shadow-[0_0_50px_rgba(245,158,11,0.4)] transition-all disabled:opacity-50 group shadow-lg"
+          >
+            <Activity size={14} className={`${loading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform'}`} />
+            {loading ? 'SYNCING...' : 'LIVE MARKET FEED'}
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
+        <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
+          <thead className="sticky top-0 z-20">
+            <tr className="border-b border-white/10 bg-[#0A0A0A] backdrop-blur-md">
+              <th className="w-16 p-5 text-[9px] font-black uppercase tracking-[0.4em] text-amber-500/50 text-center">RANK</th>
+              <th className="w-2/5 p-5 text-[9px] font-black uppercase tracking-[0.4em] text-white decoration-amber-500/20 underline-offset-8 border-l border-white/5">INSTRUMENT INDICATOR</th>
+              <th className="p-5 text-[9px] font-black uppercase tracking-[0.4em] text-amber-400 text-right bg-amber-400/5 font-mono">LIVE LTP</th>
+              <th className="p-5 text-[9px] font-black uppercase tracking-[0.4em] text-zinc-500 text-right">INTRADAY CHANGE</th>
+              <th className="p-5 text-[9px] font-black uppercase tracking-[0.4em] text-zinc-500 text-right">HI / LO</th>
+              <th className="p-5 text-[9px] font-black uppercase tracking-[0.4em] text-zinc-500 text-right">VOLUME</th>
+              <th className="w-40 p-5"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {loading && data.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="p-24 text-center">
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(245,158,11,0.2)]" />
+                    <span className="font-mono text-[10px] font-black text-amber-500 uppercase tracking-[0.5em] animate-pulse">Scanning Global Feeds...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : filteredData.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="p-24 text-center">
+                  <div className="flex flex-col items-center gap-3 opacity-30">
+                    <Database size={40} className="text-zinc-500" />
+                    <p className="text-[10px] font-black font-mono text-zinc-500 uppercase tracking-[0.3em]">No matching tickers found on tape.</p>
+                  </div>
+                </td>
+              </tr>
+            ) : filteredData.map((sgb, i) => {
+              const isTrending = i < 10 && !filter;
+              return (
+                <tr 
+                  key={i} 
+                  className={`group hover:bg-white/[0.03] transition-all duration-150 cursor-default ${isTrending ? 'bg-amber-500/[0.02]' : ''}`}
+                >
+                  <td className={`p-5 font-mono text-[10px] text-center transition-all duration-300 border-r border-white/5 relative ${isTrending ? 'text-amber-400 font-black' : 'text-zinc-600 group-hover:text-amber-400 group-hover:bg-amber-400/5'}`}>
+                    {isTrending && (
+                      <div className="absolute top-0 left-0 w-[2px] h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
+                    )}
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <div className="flex items-center justify-center gap-1">
+                        <span className="opacity-40 whitespace-nowrap">#</span>
+                        <span className="group-hover:scale-110 transition-transform">{(i + 1).toString().padStart(2, '0')}</span>
+                      </div>
+                      {isTrending && (
+                        <span className="text-[6px] font-black text-amber-500/80 uppercase tracking-tighter leading-none mt-1 animate-pulse">TRENDING</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="p-5 border-l border-white/5 bg-white/[0.01] group-hover:bg-white/[0.04] transition-colors relative overflow-hidden">
+                    <div className="flex items-center gap-4 relative z-10">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 shadow-inner ${
+                        isTrending 
+                        ? 'bg-amber-500 text-black shadow-[0_0_20px_rgba(251,191,36,0.3)]' 
+                        : 'bg-gradient-to-br from-amber-500/20 to-amber-900/10 text-amber-500 group-hover:from-amber-400 group-hover:to-amber-500 group-hover:text-black group-hover:shadow-[0_0_20px_rgba(251,191,36,0.3)]'
+                      }`}>
+                        <Coins size={18} strokeWidth={isTrending ? 3 : 2.5} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-[13px] font-black tracking-[0.1em] text-white uppercase group-hover:text-amber-400 transition-colors">{sgb.symbol}</p>
+                          {isTrending && (
+                            <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="px-1.5 py-0.5 rounded-[4px] bg-white/10 text-[7px] font-black font-mono text-zinc-400 uppercase tracking-widest">{sgb.exchange}</span>
+                          <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-[0.2em] group-hover:text-white/60 transition-colors">{sgb.name.split(' ').slice(0, 3).join(' ')}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-amber-500/0 via-amber-500/0 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </td>
+                <td className="p-5 text-right bg-white/[0.005] group-hover:bg-amber-400/5 transition-all">
+                  <div className="flex flex-col items-end">
+                    <span className="text-[14px] font-mono font-black text-white tracking-tighter group-hover:text-amber-400">₹{formatAmt(sgb.ltp)}</span>
+                    <span className="text-[7px] font-black font-mono text-zinc-600 uppercase tracking-widest mt-0.5">Spot Value</span>
+                  </div>
+                </td>
+                <td className="p-5 text-right">
+                  <div className={`inline-flex flex-col items-end px-3 py-1 rounded-lg ${sgb.percentChange >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                    <span className="text-[11px] font-mono font-black">{sgb.percentChange >= 0 ? '+' : ''}{sgb.percentChange.toFixed(2)}%</span>
+                  </div>
+                </td>
+                <td className="p-5 text-right font-mono">
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-bold text-emerald-500/80">H: ₹{formatAmt(sgb.high)}</span>
+                    <span className="text-[10px] font-bold text-rose-500/80">L: ₹{formatAmt(sgb.low)}</span>
+                  </div>
+                </td>
+                <td className="p-5 text-right">
+                  <span className="text-[12px] font-mono font-bold text-zinc-500 group-hover:text-white transition-colors">{sgb.volume.toLocaleString()}</span>
+                </td>
+                <td className="p-5 text-right">
+                  <button 
+                    onClick={() => handleQuickAdd(sgb)}
+                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-[9px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 hover:bg-amber-500 hover:text-black hover:border-amber-500 hover:scale-105 active:scale-95 transition-all duration-300"
+                  >
+                    ACQUIRE HOLDING
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+
+      <div className="p-6 bg-black/40 border-t border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-wrap gap-6">
+           <div className="flex items-center gap-2">
+             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_#10b981]" />
+             <span className="text-[8px] font-black text-zinc-500 uppercase tracking-[0.2em]">Live Data Stream Active</span>
+           </div>
+           {lastRefreshed && (
+             <div className="flex items-center gap-2">
+               <Calendar size={10} className="text-zinc-600" />
+               <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest">SYNCED: {lastRefreshed.toLocaleTimeString().toUpperCase()}</span>
+             </div>
+           )}
+           <div className="flex items-center gap-2">
+             <Database size={10} className="text-zinc-600" />
+             <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest">RECORDS: {filteredData.length} ACTIVE BONDS</span>
+           </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <ShieldCheck size={12} className="text-amber-500/40" />
+          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-[0.3em]">
+            Institutional Grade Market Data Feed
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -1586,13 +2679,125 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
+
+  const saveHoldingToFirestore = async (holding: any) => {
+    if (!user) return;
+    const stableId = (holding.symboltoken && holding.exchange) 
+      ? `holding_${holding.symboltoken}_${holding.exchange}`
+      : (holding.symboltoken)
+        ? `holding_${holding.symboltoken}`
+        : `holding_${(holding.name || 'unknown').replace(/\s+/g, '_').toUpperCase()}`;
+    const holdingId = holding.id || stableId;
+    const path = `artifacts/${appId}/users/${user.uid}/holdings/${holdingId}`;
+    try {
+      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/holdings`, holdingId), {
+        ...holding,
+        id: holdingId
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  };
+
+  const saveTradeToFirestore = async (trade: any) => {
+    if (!user) return;
+    const stableTradeId = trade.uniqueorderid || trade.orderid || trade.fillid || `trade_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const tradeId = trade.id || stableTradeId;
+    const path = `artifacts/${appId}/users/${user.uid}/api_trades/${tradeId}`;
+    try {
+      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/api_trades`, tradeId), {
+        ...trade,
+        id: tradeId,
+        syncedAt: Date.now()
+      });
+    } catch (error) {
+       handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  };
+
+  const saveFundsToFirestore = async (funds: any) => {
+    if (!user) return;
+    const path = `artifacts/${appId}/users/${user.uid}/api_funds/current`;
+    try {
+      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/api_funds`, 'current'), {
+        ...funds,
+        syncedAt: Date.now()
+      }, { merge: true });
+    } catch (error) {
+       handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  };
+
+  const saveHistoryToFirestore = async (date: string, value: number) => {
+    if (!user) return;
+    const histId = `auto_${date}`;
+    const path = `artifacts/${appId}/users/${user.uid}/history/${histId}`;
+    try {
+      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/history`, histId), {
+        id: histId,
+        date,
+        marketValue: value,
+        source: 'AngelOne API'
+      });
+    } catch (error) {
+       handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  };
+
+  const saveFundHistoryToFirestore = async (funds: any) => {
+    if (!user) return;
+    // ... impl from AngelOneIntegration usage or other source
+    // For now keeping consistent
+  };
+
+  const saveToTransactions = async (date: string, deposit: string, withdrawal: string) => {
+    if (!user) return;
+    const txnId = `api_${date}_${Date.now()}`;
+    const path = `artifacts/${appId}/users/${user.uid}/transactions/${txnId}`;
+    try {
+      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/transactions`, txnId), {
+        id: txnId,
+        date,
+        deposit: Number(deposit),
+        withdrawal: Number(withdrawal),
+        particulars: 'Sync from API',
+        source: 'AngelOne API'
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  };
+
+  const saveApiSummaryToFirestore = async (summary: any) => {
+    if (!user) return;
+    const path = `artifacts/${appId}/users/${user.uid}/api_summary/holdings`;
+    try {
+      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/api_summary`, 'holdings'), {
+        ...summary,
+        syncedAt: Date.now()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  };
   const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
   const [prompts, setPrompts] = useState<any[]>([]);
   const [holdings, setHoldings] = useState<any[]>([]);
   const [apiTrades, setApiTrades] = useState<any[]>([]);
-  const [apiFunds, setApiFunds] = useState<any>(null);
-  const [apiFundHistory, setApiFundHistory] = useState<any[]>([]);
   const [apiSummary, setApiSummary] = useState<any>(null);
+  const [brokerSettings, setBrokerSettings] = useState<any>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'broker_settings'), (snap) => {
+      const settings: any = {};
+      snap.forEach(d => {
+        settings[d.id] = d.data();
+      });
+      setBrokerSettings(settings);
+    });
+    return () => unsub();
+  }, [user]);
   const [files, setFiles] = useState<any[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -1653,12 +2858,9 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const promptsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'prompts');
     const filesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'files');
     const apiTradesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'api_trades');
-    const apiFundsPath = doc(db, 'artifacts', appId, 'users', user.uid, 'api_funds', 'current');
     const apiSummaryPath = doc(db, 'artifacts', appId, 'users', user.uid, 'api_summary', 'holdings');
     const holdingsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'holdings');
 
-    const apiFundHistoryPath = collection(db, 'artifacts', appId, 'users', user.uid, 'api_fund_history');
-    
     const unsubTxns = onSnapshot(txnsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -1686,22 +2888,13 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setApiTrades(data.sort((a, b) => new Date(b.filltime || b.updatetime || 0).getTime() - new Date(a.filltime || a.updatetime || 0).getTime()));
     }, (error) => handleFirestoreError(error, OperationType.LIST, apiTradesPath.path));
-    const unsubApiFunds = onSnapshot(apiFundsPath, (snapshot) => {
-      if (snapshot.exists()) {
-        setApiFunds(snapshot.data());
-      }
-    }, (error) => handleFirestoreError(error, OperationType.GET, apiFundsPath.path));
-    const unsubApiFundHistory = onSnapshot(apiFundHistoryPath, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      setApiFundHistory(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, apiFundHistoryPath.path));
     const unsubApiSummary = onSnapshot(apiSummaryPath, (snapshot) => {
       if (snapshot.exists()) setApiSummary(snapshot.data());
     }, (error) => handleFirestoreError(error, OperationType.GET, apiSummaryPath.path));
     const unsubHoldings = onSnapshot(holdingsPath, (snapshot) => {
       setHoldings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => handleFirestoreError(error, OperationType.LIST, holdingsPath.path));
-    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); unsubApiTrades(); unsubApiFunds(); unsubApiFundHistory(); unsubHoldings(); unsubApiSummary(); };
+    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); unsubApiTrades(); unsubHoldings(); unsubApiSummary(); };
   }, [user]);
 
   const updateCloudDoc = async (collName: string, id: string, data: any) => {
@@ -1967,17 +3160,28 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const metrics = useMemo(() => {
     const apiMV = apiSummary?.totalholdingvalue ? Number(apiSummary.totalholdingvalue) : 0;
     
-    // Calculate live value from ALL holdings (synced or manual)
-    const holdingsMV = holdings.reduce((acc: number, h: any) => {
+    // Categorized calculation for live value from ALL holdings (synced or manual)
+    const holdingsDetail = holdings.reduce((acc, h: any) => {
       const val = (Number(h.qty) || 0) * (Number(h.ltp) || 0);
-      return acc + (isNaN(val) ? 0 : val);
-    }, 0);
-    
-    // We prefer the highest of the two: 
-    // 1. The total reported by API (which might include things we didn't fetch)
-    // 2. The sum of items we have in our list (including MF and manual)
-    const liveMV = Math.max(apiMV, holdingsMV);
+      const cleanedVal = isNaN(val) ? 0 : val;
+      const type = (h.type || '').toUpperCase();
+      const name = (h.name || '').toUpperCase();
+
+      if (type === 'EQUITY' || type === 'STOCK') acc.stocks += cleanedVal;
+      else if (type === 'MF' || type === 'MUTUAL_FUND') acc.mf += cleanedVal;
+      else if (type === 'SGB' || name.startsWith('SGB')) acc.sgb += cleanedVal;
+      else acc.others += cleanedVal;
       
+      acc.total += cleanedVal;
+      return acc;
+    }, { stocks: 0, mf: 0, sgb: 0, others: 0, total: 0 });
+    
+    // The user explicitly wants Current Value = Stocks + Mutual Funds + SGB
+    const explicitMV = holdingsDetail.stocks + holdingsDetail.mf + holdingsDetail.sgb;
+    
+    // Use the explicit sum as requested by the user
+    const liveMV = explicitMV > 0 ? explicitMV : apiMV;
+    
     const histMV = validHistory.length > 0 ? Number(validHistory[validHistory.length - 1].marketValue) : 0;
     const curMV = (liveMV > 0) ? liveMV : histMV;
 
@@ -2012,6 +3216,12 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
     return { 
       currentMV: curMV, 
+      breakdown: {
+        stocks: holdingsDetail.stocks,
+        mf: holdingsDetail.mf,
+        sgb: holdingsDetail.sgb
+      },
+      sgbValue: holdingsDetail.sgb,
       net, 
       pl: curMV - net, 
       avgY, 
@@ -2142,8 +3352,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <button onClick={() => scrollToSection('dashboards')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Dashboards</button>
               <button onClick={() => scrollToSection('performance')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Performance Comparison</button>
               <button onClick={() => scrollToSection('savings')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Net Savings</button>
-              <button onClick={() => scrollToSection('api-funds')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Funds</button>
-              <button onClick={() => scrollToSection('api-fund-history')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Fund Transfers</button>
+              <button onClick={() => scrollToSection('sgb-market-explorer')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">SGB Market</button>
               <button onClick={() => scrollToSection('api-trades')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Transactions</button>
               <button onClick={() => scrollToSection('prompts')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Prompts</button>
               <button onClick={() => scrollToSection('documents')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Documents</button>
@@ -2169,7 +3378,26 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   rawValue={metrics.currentMV}
                   icon={IndianRupee} 
                   delay={0.1}
-                  highlightColor="zinc"
+                  highlightColor="brand"
+                  subtext={
+                    <div className="flex flex-col gap-1 mt-1">
+                      <div className="flex justify-between items-center text-[10px] uppercase tracking-wider font-bold">
+                        <span className="opacity-60">Stocks:</span>
+                        <span className="text-brand">{formatCurrency(metrics.breakdown.stocks)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] uppercase tracking-wider font-bold">
+                        <span className="opacity-60">SGB:</span>
+                        <span className="text-amber-500">{formatCurrency(metrics.breakdown.sgb)}</span>
+                      </div>
+                      {metrics.breakdown.mf > 0 && (
+                        <div className="flex justify-between items-center text-[10px] uppercase tracking-wider font-bold">
+                          <span className="opacity-60">MF:</span>
+                          <span className="text-cyan-400">{formatCurrency(metrics.breakdown.mf)}</span>
+                        </div>
+                      )}
+                    </div>
+                  }
+                  className="bg-gradient-to-br from-brand/10 to-brand/5 border-brand/30 dark:bg-gradient-to-br dark:from-brand/20 dark:to-transparent dark:border-brand/40 shadow-[0_20px_40px_-15px_rgba(var(--brand-color-rgb),0.3)]"
                 />
                 <MetricCard 
                   title="Net Deposits" 
@@ -2257,111 +3485,12 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="holdings">
-                <HoldingsTable user={user} holdings={holdings} />
+                <HoldingsTable user={user} holdings={holdings} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
               </div>
 
-              {apiFunds && (
-                <div id="api-funds" className="space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500"><Wallet size={20} /></div>
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">API Funds & Transfers</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="glass-card p-5 rounded-2xl border border-black/5 dark:border-white/5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Available Cash</p>
-                      <p className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">₹{apiFunds.availablecash || '0.00'}</p>
-                    </div>
-                    <div className="glass-card p-5 rounded-2xl border border-black/5 dark:border-white/5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-1">Today's Deposit (Pay-in)</p>
-                      <p className="text-2xl font-black text-emerald-500 tracking-tight">₹{apiFunds.payin || '0.00'}</p>
-                    </div>
-                    <div className="glass-card p-5 rounded-2xl border border-black/5 dark:border-white/5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-1">Today's Withdrawal (Pay-out)</p>
-                      <p className="text-2xl font-black text-rose-500 tracking-tight">₹{apiFunds.payout || '0.00'}</p>
-                    </div>
-                    <div className="glass-card p-5 rounded-2xl border border-black/5 dark:border-white/5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Net Balance</p>
-                      <p className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">₹{apiFunds.net || '0.00'}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {apiFundHistory.length > 0 && (
-                <div id="api-fund-history" className="space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500"><IndianRupee size={20} /></div>
-                      <h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Deposit & Withdrawal History (API)</h3>
-                    </div>
-                    
-                    <button 
-                      onClick={async () => {
-                        const confirmSync = window.confirm("This will copy ALL API-synced deposit/withdrawal history into your manual transactions ledger (Data tab). Existing entries with the same ID will be updated. Proceed?");
-                        if (!confirmSync) return;
-                        
-                        try {
-                          for (const h of apiFundHistory) {
-                            // Extract unique identifier from h.id (which is fund_YYYY-MM-DD_voucherno)
-                            const uniqueSuffix = h.id.split('_').slice(2).join('_');
-                            const txnId = `api_txn_${h.date}_${uniqueSuffix}`;
-                            await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/transactions`, txnId), {
-                              id: txnId,
-                              date: h.date,
-                              deposit: Number(h.payin || 0),
-                              withdrawal: Number(h.payout || 0),
-                              particulars: h.particulars || '',
-                              source: 'AngelOne API'
-                            });
-                          }
-                          addToast("Ledger Updated", "All history successfully pushed to manual transactions.", "success");
-                        } catch (err) {
-                          console.error(err);
-                          addToast("Update Failed", "Failed to transfer data to ledger.", "error");
-                        }
-                      }}
-                      className="group flex items-center gap-2 px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95"
-                    >
-                      <ArrowUpRight size={14} className="group-hover:rotate-45 transition-transform" />
-                      Apply to Manual Ledger
-                    </button>
-                  </div>
-                  <div className="glass-card rounded-2xl overflow-hidden border border-black/5 dark:border-white/5">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs md:text-sm">
-                        <thead className="bg-slate-50 dark:bg-white/5 border-b border-black/5 dark:border-white/5 uppercase text-[10px] font-black tracking-widest text-zinc-500">
-                          <tr>
-                            <th className="p-4">Date</th>
-                            <th className="p-4">Particulars</th>
-                            <th className="p-4">Voucher ID</th>
-                            <th className="p-4 text-emerald-500">Deposit (Pay-in)</th>
-                            <th className="p-4 text-rose-500">Withdrawal (Pay-out)</th>
-                            <th className="p-4">Balance</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-black/5 dark:divide-white/5">
-                          {apiFundHistory.slice(0, 50).map((h, idx) => (
-                            <tr key={h.id || idx} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors group">
-                              <td className="p-4 font-mono">{h.date}</td>
-                              <td className="p-4">
-                                <span className="text-[10px] md:text-xs font-medium text-zinc-600 dark:text-zinc-400 block max-w-[150px] truncate group-hover:whitespace-normal transition-all" title={h.particulars}>
-                                  {h.particulars || 'Fund Transfer'}
-                                </span>
-                              </td>
-                              <td className="p-4 font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
-                                {h.voucherno || h.vouchernumber || '-'}
-                              </td>
-                              <td className="p-4 font-bold text-emerald-600 dark:text-emerald-400">₹{h.payin}</td>
-                              <td className="p-4 font-bold text-rose-600 dark:text-rose-400">₹{h.payout}</td>
-                              <td className="p-4 font-bold text-slate-700 dark:text-zinc-300">₹{h.availablecash}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div id="sgb-market-explorer">
+                <SgbMarketExplorer brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
+              </div>
 
               {apiTrades.length > 0 && (
                 <div id="api-trades" className="space-y-6">
@@ -2466,6 +3595,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <AngelOneIntegration 
                     user={user} 
+                    brokerSettings={brokerSettings}
                     saveHoldingToFirestore={async (holding: any) => {
                       if (!user) return;
                       // Use a stable ID based on symboltoken or name
@@ -2562,36 +3692,10 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
           {activeTab === 'data' && (
             <div className="space-y-6 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {apiFunds && (
-                <div className="glass-card p-6 rounded-[2.5rem] border border-black/5 dark:border-white/5 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-brand/10 rounded-2xl text-brand"><Wallet size={24} /></div>
-                    <div>
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-500">Synced API Funds</h4>
-                      <div className="flex items-center gap-6 mt-1">
-                        <div>
-                          <span className="text-[10px] text-zinc-400 uppercase font-bold block">Available</span>
-                          <span className="text-lg font-black text-slate-900 dark:text-white">₹{apiFunds.availablecash}</span>
-                        </div>
-                        <div className="w-px h-8 bg-slate-200 dark:bg-white/10" />
-                        <div>
-                          <span className="text-[10px] text-emerald-500 uppercase font-bold block">Pay-in</span>
-                          <span className="text-lg font-black text-emerald-500">₹{apiFunds.payin}</span>
-                        </div>
-                        <div className="w-px h-8 bg-slate-200 dark:bg-white/10" />
-                        <div>
-                          <span className="text-[10px] text-rose-500 uppercase font-bold block">Pay-out</span>
-                          <span className="text-lg font-black text-rose-500">₹{apiFunds.payout}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[9px] font-mono text-zinc-500 uppercase">Last Synced</p>
-                    <p className="text-[10px] font-bold text-zinc-400">{new Date(apiFunds.syncedAt).toLocaleString()}</p>
-                  </div>
-                </div>
-              )}
+              <div id="sgb-market">
+                <SgbMarketExplorer brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8 items-start">
                 <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','particulars','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','particulars','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
                 <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} />

@@ -54,6 +54,9 @@ service cloud.firestore {
       match /api_summary/{summaryId} {
         allow read, write: if isOwner(userId);
       }
+      match /broker_settings/{brokerId} {
+        allow read, write: if isOwner(userId);
+      }
     }
   }
 }

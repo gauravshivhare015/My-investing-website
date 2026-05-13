@@ -4,42 +4,34 @@ import path from "path";
 import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
-import { createRequire } from "module";
 import { TOTP } from "totp-generator";
 
-const require = createRequire(import.meta.url);
-
-// totp-generator uses a static method for generation
-// No need for a persistent instance here if we use TOTP.generate()
-
-// Robustly load dependencies from CJS packages in ESM environment
+// In CJS bundle (production), __dirname and require are already defined.
+// In tsx (dev), we handle ESM/CJS compatibility carefully.
 let SmartAPI: any;
 
-console.log("Initializing SmartAPI loading...");
-try {
-  const smartapi_pkg = require("smartapi-javascript");
-  if (smartapi_pkg) {
-    console.log("Loading smartapi-javascript. Package exports found.");
-    // SmartAPI is usually a named export or under default
-    const SmartAPI_Class = smartapi_pkg.SmartAPI || (smartapi_pkg.default && smartapi_pkg.default.SmartAPI) || smartapi_pkg;
-    SmartAPI = SmartAPI_Class;
-    console.log("SmartAPI Class extracted:", !!SmartAPI);
-  } else {
-    console.warn("smartapi-javascript package loaded as null or undefined");
+// Helper to get __dirname in both ESM and CJS
+const getDirname = () => {
+  try {
+    // @ts-ignore
+    return __dirname;
+  } catch (e) {
+    // Fallback for ESM
+    try {
+      return path.dirname(fileURLToPath(import.meta.url));
+    } catch (e2) {
+      return process.cwd();
+    }
   }
-} catch (e) {
-  console.error("Failed to load smartapi-javascript library:", e);
-}
+};
 
-// Load environment variables as early as possible
+const __dirname_safe = getDirname();
+
+// Load environment variables
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-console.log("Final library status:", { 
-  hasSmartAPI: !!SmartAPI
-});
+// Unified paths
+const distPath = path.join(process.cwd(), "dist");
 
 // Process-level error handling to prevent silent crashes
 process.on('unhandledRejection', (reason, promise) => {
@@ -53,6 +45,28 @@ process.on('uncaughtException', (err) => {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  console.log("Initializing SmartAPI loading...");
+  try {
+    // Use dynamic require for CJS or dynamic import for ESM
+    const smartapi_pkg = typeof require !== "undefined" 
+      ? require("smartapi-javascript")
+      : (await import("smartapi-javascript")).default || (await import("smartapi-javascript"));
+
+    if (smartapi_pkg) {
+      console.log("Loading smartapi-javascript. Package exports found.");
+      const SmartAPI_Class = smartapi_pkg.SmartAPI || (smartapi_pkg.default && smartapi_pkg.default.SmartAPI) || smartapi_pkg;
+      SmartAPI = SmartAPI_Class;
+      console.log("SmartAPI Class extracted:", !!SmartAPI);
+    }
+  } catch (e) {
+    console.error("Failed to load smartapi-javascript library:", e);
+  }
+
+  console.log("Final library status:", { 
+    hasSmartAPI: !!SmartAPI
+  });
+
 
   // app.use(express.json()); // This is already called below
   app.use(express.json({ limit: '1mb' }));
@@ -77,17 +91,22 @@ async function startServer() {
     try {
       console.log("--- Angel One Sync Operation Started ---");
       
-      const clientId = process.env.ANGEL_ONE_CLIENT_ID;
-      const apiKey = process.env.ANGEL_ONE_API_KEY;
-      const password = process.env.ANGEL_ONE_PASSWORD;
-      const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET;
+      const { credentials } = req.body;
+      
+      const clientId = credentials?.clientId || process.env.ANGEL_ONE_CLIENT_ID;
+      const apiKey = credentials?.apiKey || process.env.ANGEL_ONE_API_KEY;
+      const password = credentials?.password || process.env.ANGEL_ONE_PASSWORD;
+      const totpSecret = credentials?.totpSecret || process.env.ANGEL_ONE_TOTP_SECRET;
 
+      console.log("Credential source:", credentials ? "User-provided" : "Environment-provided");
       console.log("Environment check:", {
         clientId: !!clientId,
         apiKey: !!apiKey,
         password: !!password,
         totpSecret: !!totpSecret
       });
+
+      // ... existing validation and TOTP logic ...
 
       // Ensure all required variables are set
       if (!clientId || !apiKey || !password || !totpSecret) {
@@ -385,7 +404,7 @@ async function startServer() {
       }
     }
   });
-
+  
   // API Route for Market Data
   app.post("/api/market/data", async (req, res, next) => {
     try {
@@ -479,6 +498,192 @@ async function startServer() {
       if (!res.headersSent) {
         res.status(500).json({ error: error.message || "Internal server error" });
       }
+    }
+  });
+
+  // API Route for Symbol Search (Heuristic for SGBs)
+  app.get("/api/market/search", async (req, res) => {
+    try {
+      const { query: searchQuery } = req.query;
+      if (!searchQuery) return res.status(400).json({ error: "Query is required" });
+
+      const clientId = process.env.ANGEL_ONE_CLIENT_ID;
+      const apiKey = process.env.ANGEL_ONE_API_KEY;
+      const password = process.env.ANGEL_ONE_PASSWORD;
+      const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET;
+
+      if (!clientId || !apiKey || !password || !totpSecret) {
+        return res.status(401).json({ error: "Not configured" });
+      }
+
+      const rawSecret = String(totpSecret || "").replace(/['"\s]/g, '').toUpperCase().trim();
+      const totpResult = await TOTP.generate(rawSecret);
+      const totpToken = totpResult.otp;
+
+      const smart_api = new SmartAPI({ api_key: apiKey });
+      await smart_api.generateSession(clientId, password, totpToken);
+
+      const searchScripFn = (smart_api as any).searchScrip || (smart_api as any).search_scrip;
+      if (!searchScripFn) throw new Error("searchScrip not found");
+
+      // Search in NSE
+      const nseRes = await searchScripFn.call(smart_api, {
+        exchange: "NSE",
+        searchQuery: searchQuery
+      });
+
+      // Search in BSE
+      const bseRes = await searchScripFn.call(smart_api, {
+        exchange: "BSE",
+        searchQuery: searchQuery
+      });
+
+      const results = [
+        ...(nseRes.status && nseRes.data ? nseRes.data : []),
+        ...(bseRes.status && bseRes.data ? bseRes.data : [])
+      ];
+
+      res.json({ status: "success", data: results });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // API Route to fetch ALL active SGB market data
+  app.get("/api/market/sgb-explorer", async (req, res) => {
+    try {
+      const { query: customTerm } = req.query;
+      // ... same auth as before
+      const clientId = process.env.ANGEL_ONE_CLIENT_ID;
+      const apiKey = process.env.ANGEL_ONE_API_KEY;
+      const password = process.env.ANGEL_ONE_PASSWORD;
+      const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET;
+
+      if (!clientId || !apiKey || !password || !totpSecret) {
+        return res.status(401).json({ error: "Not configured" });
+      }
+
+      const rawSecret = String(totpSecret || "").replace(/['"\s]/g, '').toUpperCase().trim();
+      const totpResult = await TOTP.generate(rawSecret);
+      const totpToken = totpResult.otp;
+
+      const smart_api = new SmartAPI({ api_key: apiKey });
+      await smart_api.generateSession(clientId, password, totpToken);
+
+      const searchScripFn = (smart_api as any).searchScrip || (smart_api as any).search_scrip;
+      
+      // Broader search for SGBs - including specific series requested
+      const baseTerms = ["SGB", "SOVEREIGN", "SGBAUG28", "SGBN28", "SGBDE30", "SGBAUG28V", "SGBN28VIII", "SGBDE30III", "SGBNOV28", "SGBDEC30", "SGBN28V", "SGBDE30V"];
+      const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      const years = ["24", "25", "26", "27", "28", "29", "30", "31", "32"];
+      
+      const chronologicalTerms = years.map(y => `SGB${y}`);
+      const monthlyTerms = months.map(m => `SGB${m}`);
+      
+      let searchTerms = [...new Set([...baseTerms, ...chronologicalTerms, ...monthlyTerms])];
+      
+      if (customTerm && typeof customTerm === 'string' && customTerm.length > 1) {
+        const ct = customTerm.toUpperCase();
+        searchTerms = [ct, `SGB${ct}`, `SGB ${ct}`, ...searchTerms];
+      }
+      
+      const allRawResults: any[] = [];
+      
+      // Execute searches in batches
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < searchTerms.length; i += BATCH_SIZE) {
+        const batch = searchTerms.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (term) => {
+          try {
+            const nseRes = await searchScripFn.call(smart_api, { exchange: "NSE", searchQuery: term });
+            if (nseRes.status && nseRes.data) allRawResults.push(...nseRes.data);
+            
+            const bseRes = await searchScripFn.call(smart_api, { exchange: "BSE", searchQuery: term });
+            if (bseRes.status && bseRes.data) allRawResults.push(...bseRes.data);
+          } catch (e) {
+            console.error(`Search failed for term ${term}:`, e);
+          }
+        }));
+      }
+
+      // Filter for actual SGB symbols
+      const sgbList = allRawResults.filter((d: any) => {
+        const symbol = d.tradingsymbol.toUpperCase();
+        const name = (d.symbolname || "").toUpperCase();
+        
+        return (
+          (symbol.includes("SGB") || symbol.startsWith("SOV") || name.includes("SOVEREIGN GOLD")) &&
+          !symbol.includes("GOLDBEES") &&
+          !symbol.includes("GOLD1")
+        );
+      });
+
+      // Deduplicate by normalized trading symbol and exchange
+      const uniqueSgbs: any[] = [];
+      const seenSymbolExchange = new Set();
+
+      for (const s of sgbList) {
+        const key = `${s.tradingsymbol}_${s.exchange}`;
+        if (!seenSymbolExchange.has(key)) {
+          seenSymbolExchange.add(key);
+          uniqueSgbs.push(s);
+        }
+      }
+
+      // Prioritize custom term matches in the list
+      if (customTerm && typeof customTerm === 'string') {
+        const query = customTerm.toUpperCase();
+        uniqueSgbs.sort((a, b) => {
+          const aMatch = a.tradingsymbol.toUpperCase().includes(query);
+          const bMatch = b.tradingsymbol.toUpperCase().includes(query);
+          if (aMatch && !bMatch) return -1;
+          if (!aMatch && bMatch) return 1;
+          return 0;
+        });
+      }
+
+      // Take a decent number to explore
+      const listToFetch = uniqueSgbs.slice(0, 250);
+
+      // Group market data requests by exchange
+      const nseTokens = listToFetch.filter(s => s.exchange === "NSE").map(s => s.symboltoken);
+      const bseTokens = listToFetch.filter(s => s.exchange === "BSE").map(s => s.symboltoken);
+
+      const marketData: any = { data: { fetched: [] } };
+      
+      // Split into smaller batches if needed, but 50-100 is usually okay for one FULL request
+      try {
+        const fetchObj: any = {};
+        if (nseTokens.length > 0) fetchObj["NSE"] = nseTokens;
+        if (bseTokens.length > 0) fetchObj["BSE"] = bseTokens;
+        
+        if (Object.keys(fetchObj).length > 0) {
+          const resFull = await smart_api.getMarketData("FULL", fetchObj);
+          if (resFull.status && resFull.data) marketData.data = resFull.data;
+        }
+      } catch (e) {
+        console.error("Market data fetch failed:", e);
+      }
+
+      const processed = listToFetch.map((s: any) => {
+        const live = (marketData.data?.fetched || []).find((f: any) => f.symboltoken === s.symboltoken);
+        return {
+          symbol: s.tradingsymbol,
+          token: s.symboltoken,
+          exchange: s.exchange || "NSE",
+          ltp: live?.ltp || 0,
+          pClose: live?.close || 0,
+          percentChange: live?.percentChange || 0,
+          high: live?.high || 0,
+          low: live?.low || 0,
+          volume: live?.volume || 0,
+          name: s.symbolname || s.tradingsymbol
+        };
+      }).filter(p => p.ltp > 0 || p.volume > 0); // Only keep ones that have some activity
+
+      res.json({ status: "success", data: processed });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
     }
   });
 

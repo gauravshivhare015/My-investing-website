@@ -121,9 +121,23 @@
         "totalinvvalue": { "type": "number" },
         "updatedAt": { "type": "string" }
       }
+    },
+    "BrokerSettings": {
+      "title": "BrokerSettings",
+      "description": "User credentials for various brokers",
+      "type": "object",
+      "properties": {
+        "brokerId": { "type": "string", "enum": ["angelone"] },
+        "credentials": { "type": "object" },
+        "updatedAt": { "type": "number" }
+      }
     }
   },
   "firestore": {
+    "/artifacts/{appId}/users/{userId}/broker_settings/{brokerId}": {
+      "schema": { "$ref": "#/entities/BrokerSettings" },
+      "description": "User credentials for specific broker"
+    },
     "/artifacts/{appId}/users/{userId}/transactions/{transactionId}": {
       "schema": { "$ref": "#/entities/Transaction" },
       "description": "User transactions"
