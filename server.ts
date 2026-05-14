@@ -357,21 +357,71 @@ async function startServer() {
                fromdate: fromDate,
                todate: toDate
              });
-             if (ledger && ledger.status && ledger.data) {
+             if (ledger && (ledger.status || ledger.status === true) && ledger.data) {
                ledgerData = ledger.data;
-               console.log(`Successfully fetched ${ledgerData.length} ledger entries.`);
+               console.log(`Successfully fetched ${ledgerData.length} ledger entries via SDK.`);
              }
            } catch (e) {
-             console.log("Ledger fetch failed with params, trying without:", e);
+             console.log("Ledger fetch failed via SDK, trying direct API fallback...", e);
              try {
-                const ledger = await getLedgerFn.call(smart_api);
-                if (ledger && ledger.status && ledger.data) {
-                  ledgerData = ledger.data;
+                // Fallback direct API call
+                const axios = (await import("axios")).default;
+                const directRes = await axios.post('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/getLedger', {
+                  fromdate: fromDate,
+                  todate: toDate
+                }, {
+                  headers: {
+                    'X-PrivateKey': apiKey,
+                    'X-UserType': 'USER',
+                    'X-SourceID': 'WEB',
+                    'X-ClientLocalIP': '127.0.0.1',
+                    'X-ClientPublicIP': '106.193.147.98',
+                    'X-MACAddress': 'FE-80-45-FE-FE-FE',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${(smart_api as any).jwtToken || (smart_api as any).sessionToken}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                
+                if (directRes.data && directRes.data.status && directRes.data.data) {
+                  ledgerData = directRes.data.data;
+                  console.log(`Successfully fetched ${ledgerData.length} ledger entries via Direct API.`);
                 }
-             } catch (e2) {
-                console.log("Ledger fetch failed completely:", e2);
+             } catch (e2: any) {
+                console.log("Direct Ledger fetch failed:", e2.message);
              }
            }
+        } else {
+            console.log("No Ledger method found on SDK, trying direct API...");
+            try {
+                const today = new Date();
+                const toDate = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+                const fromDate = "01-01-2025";
+                const axios = (await import("axios")).default;
+                const directRes = await axios.post('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/getLedger', {
+                  fromdate: fromDate,
+                  todate: toDate
+                }, {
+                  headers: {
+                    'X-PrivateKey': apiKey,
+                    'X-UserType': 'USER',
+                    'X-SourceID': 'WEB',
+                    'Accept': 'application/json',
+                    'X-ClientLocalIP': '127.0.0.1',
+                    'X-ClientPublicIP': '127.0.0.1',
+                    'X-MACAddress': 'FE-80-45-FE-FE-FE',
+                    'Authorization': `Bearer ${(smart_api as any).jwtToken || (smart_api as any).sessionToken}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                
+                if (directRes.data && directRes.data.status && directRes.data.data) {
+                  ledgerData = directRes.data.data;
+                  console.log(`Successfully fetched ${ledgerData.length} ledger entries via Direct API (No SDK method).`);
+                }
+            } catch (e3: any) {
+                console.log("Direct Ledger fetch (No SDK) failed:", e3.message);
+            }
         }
       } catch (rmsErr) {
         console.error("Non-critical error fetching RMS/Ledger:", rmsErr);
@@ -706,6 +756,71 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  // API Route to fetch Benchmark (Niftybees) historical data from Yahoo Finance
+  app.get("/api/market/benchmark", async (req, res) => {
+    try {
+      console.log("Fetching Niftybees data from Yahoo Finance...");
+      const symbol = "NIFTYBEES.NS";
+      const range = "6mo"; // 6 months of data
+      const interval = "1d"; // Daily intervals
+      
+      // Using query2 which is often more stable in cloud environments
+      const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`;
+      
+      const axios = (await import("axios")).default;
+      const response = await axios.get(yahooUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Origin': 'https://finance.yahoo.com'
+        },
+        timeout: 10000 // 10 second timeout
+      });
+
+      if (!response.data?.chart?.result?.[0]) {
+        console.error("Yahoo Finance: No result in response", response.data);
+        return res.status(500).json({ error: "No data returned from Yahoo Finance" });
+      }
+
+      const result = response.data.chart.result[0];
+      const timestamps = result.timestamp || [];
+      const indicators = result.indicators?.quote?.[0];
+      
+      if (!timestamps.length || !indicators) {
+        return res.json({ status: "success", history: [], message: "Empty dataset" });
+      }
+
+      const adjClose = result.indicators.adjclose?.[0]?.adjclose || indicators.close;
+
+      const items = timestamps.map((ts: number, i: number) => ({
+        date: new Date(ts * 1000).toISOString().split('T')[0],
+        price: adjClose[i] ? Number(adjClose[i].toFixed(2)) : (indicators.close[i] ? Number(indicators.close[i].toFixed(2)) : null),
+        high: indicators.high[i] ? Number(indicators.high[i].toFixed(2)) : null,
+        low: indicators.low[i] ? Number(indicators.low[i].toFixed(2)) : null,
+        open: indicators.open[i] ? Number(indicators.open[i].toFixed(2)) : null,
+        volume: indicators.volume[i]
+      })).filter((item: any) => item.price !== null);
+
+      res.json({
+        status: "success",
+        symbol: symbol,
+        company: "NIFTYBEES",
+        lastPrice: result.meta.regularMarketPrice,
+        currency: result.meta.currency,
+        history: items
+      });
+    } catch (error: any) {
+      console.error("Yahoo Finance Benchmark Error:", error.message);
+      // For fetch errors (ECONNREFUSED, ENOTFOUND, etc.) or timeouts
+      const statusCode = error.response?.status || 500;
+      res.status(statusCode).json({ 
+        error: "Failed to fetch benchmark data", 
+        details: error.message,
+        status: "error"
+      });
+    }
+  });
 
   // Global Error Handler
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {

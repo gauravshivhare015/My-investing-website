@@ -15,7 +15,7 @@ import {
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon, Coins, Sparkles,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu, Settings, RefreshCw
+  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu, Settings, RefreshCw, Edit3
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -27,6 +27,7 @@ import { auth, db } from './firebase';
 // --- Error Handling & Toast Imports ---
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider, useToasts } from './context/ToastContext';
+import Footer from './components/Footer';
 
 enum OperationType {
   CREATE = 'create',
@@ -86,6 +87,18 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   // Return the error so the caller can decide whether to show a transient toast
   return errInfo;
 }
+
+const fetchJson = async (url: string, options?: RequestInit) => {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text);
+    return { data, ok: res.ok, status: res.status };
+  } catch (e) {
+    console.error(`Non-JSON response from ${url}:`, text.substring(0, 200));
+    throw new Error(`Server at ${url} returned invalid response (Status ${res.status}). Expected JSON, got: ${text.substring(0, 100)}...`);
+  }
+};
 
 // --- AI Imports ---
 import gsap from 'gsap';
@@ -910,7 +923,7 @@ const parseDDMMYYYYtoISO = (val: string) => {
   return trimmed;
 };
 
-const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveFundHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore }: { user: any, brokerSettings?: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveFundHistoryToFirestore: (funds: any) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void> }) => {
+const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore }: { user: any, brokerSettings?: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void> }) => {
   const { addToast } = useToasts();
   const [configStatus, setConfigStatus] = useState<any>({ configured: false, status: {} });
   const [isSyncing, setIsSyncing] = useState(false);
@@ -920,8 +933,7 @@ const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, sav
   useEffect(() => {
     const checkConfig = async () => {
       try {
-        const res = await fetch('/api/config/status');
-        const data = await res.json();
+        const { data } = await fetchJson('/api/config/status');
         setConfigStatus(data);
       } catch (err) {
         console.error("Failed to check config", err);
@@ -997,7 +1009,6 @@ const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, sav
 
         if (data.funds) {
           await saveFundsToFirestore(data.funds);
-          await saveFundHistoryToFirestore(data.funds);
           
           // Automatically sync to manual transactions
           const today = new Date().toISOString().split('T')[0];
@@ -1060,20 +1071,12 @@ const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, sav
                 const payout = Number(item.payout || item.debit || (item.amount < 0 && isFundTransfer ? Math.abs(item.amount) : 0));
 
                 if (payin > 0 || payout > 0 || isFundTransfer) {
-                  await saveFundHistoryToFirestore({
-                      payin: String(payin),
-                      payout: String(payout),
-                      availablecash: String(item.balance || item.net || '0'),
-                      net: String(item.net || '0'),
-                      date: normalizedDate,
-                      particulars: item.particulars || '',
-                      voucherno: item.voucherno || item.vouchernumber || ''
-                  });
+                  // No longer saving to fund history as it was removed
                 }
             }
         }
 
-        addToast("Portfolio Synced", data.ledger ? "Holdings, trades, and ledger since Jan 2025 imported successfully." : "All holdings, trades, and fund status imported successfully.", "success");
+        addToast("Portfolio Synced", data.ledger ? `Holdings, trades, and ${data.ledger.length} ledger entries imported successfully.` : "All holdings, trades, and fund status imported successfully.", "success");
       } else {
         addToast("Sync Failed", data.error || "Integration encountered an error.", "error");
       }
@@ -1464,9 +1467,8 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
     if (!name || name.length < 3) return;
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/market/search?query=${encodeURIComponent(name.toUpperCase())}`);
-      const result = await res.json();
-      if (res.ok && result.data) {
+      const { data: result } = await fetchJson(`/api/market/search?query=${encodeURIComponent(name.toUpperCase())}`);
+      if (result.data) {
         // Filter for SGBs or Gold related symbols
         setSearchResults(result.data.filter((d: any) => 
           d.tradingsymbol.toUpperCase().includes('SGB') || 
@@ -1663,20 +1665,35 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Automatically trigger refresh if we have SGBs with missing or 0 prices
-    if (holdings.length > 0 && !isRefreshingPrices) {
-      const needsAiRefresh = holdings.some(h => 
-        h.type === 'SGB' && (!h.ltp || h.ltp === 0 || !h.symboltoken)
-      );
+    const checkScheduledRefresh = async () => {
+      if (holdings.length === 0 || isRefreshingPrices) return;
+
+      const now = new Date();
+      // Use IST for market hour logic
+      const istLocale = now.toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' });
+      const istDate = istLocale.split(',')[0]; // DD/MM/YYYY
+      const istTime = now.toLocaleTimeString('en-GB', { 
+        timeZone: 'Asia/Kolkata', 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
       
-      if (needsAiRefresh) {
-        const timer = setTimeout(() => {
-           refreshPrices();
-        }, 1000);
-        return () => clearTimeout(timer);
+      const [hours, minutes] = istTime.split(':').map(Number);
+      const isAfterMarketClose = (hours > 15) || (hours === 15 && minutes >= 30);
+
+      if (isAfterMarketClose) {
+        const lastAutoRefresh = localStorage.getItem('last_auto_sgb_refresh');
+        if (lastAutoRefresh !== istDate) {
+          console.log(`Executing daily scheduled SGB sync for ${istDate} (Post 3:30 PM IST)`);
+          localStorage.setItem('last_auto_sgb_refresh', istDate);
+          refreshPrices();
+        }
       }
-    }
-  }, [holdings.length]); // Watch length to trigger on new additions
+    };
+
+    checkScheduledRefresh();
+  }, [holdings.length]); // Run once when holdings load or change
 
   const resolveSgbToken = async (sgb: any) => {
     try {
@@ -1688,10 +1705,9 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
         .replace(/SERIES[IVX]+/g, '')
         .trim();
       
-      const searchRes = await fetch(`/api/market/search?query=${encodeURIComponent(searchTerm)}`);
-      const searchResult = await searchRes.json();
+      const { data: searchResult } = await fetchJson(`/api/market/search?query=${encodeURIComponent(searchTerm)}`);
       
-      if (searchRes.ok && searchResult.data && searchResult.data.length > 0) {
+      if (searchResult.status === 'success' && searchResult.data && searchResult.data.length > 0) {
         const matches = searchResult.data;
         // Priority 1: Exact match with -GB (NSE standard for SGBs)
         // Priority 2: Exact match name
@@ -1804,14 +1820,13 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
       let apiFetchedTokens: Set<string> = new Set();
 
       if (tokens.length > 0) {
-        const res = await fetch('/api/market/data', {
+        const { data: result, status } = await fetchJson('/api/market/data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tokens })
         });
 
-        const result = await res.json();
-        if (res.ok && result.status === 'success' && result.data && result.data.fetched) {
+        if (result.status === 'success' && result.data && result.data.fetched) {
           const fetchedData = result.data.fetched;
           
           for (const item of fetchedData) {
@@ -2014,8 +2029,53 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
   });
 
   const SortIndicator = ({ column }: { column: string }) => {
-    if (sortConfig.key !== column) return <ArrowUpDown size={10} className="ml-1 opacity-20" />;
-    return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-brand" /> : <ChevronDown size={10} className="ml-1 text-brand" />;
+    const isActive = sortConfig.key === column;
+    
+    return (
+      <div className="relative flex items-center justify-center w-5 h-5 ml-1">
+        <AnimatePresence mode="popLayout" initial={false}>
+          {!isActive ? (
+            <motion.div
+              key="idle"
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 0.15, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ duration: 0.2 }}
+              className="text-slate-400"
+            >
+              <ArrowUpDown size={10} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key={sortConfig.direction}
+              initial={{ 
+                opacity: 0, 
+                rotate: sortConfig.direction === 'asc' ? -90 : 90,
+                scale: 0.5
+              }}
+              animate={{ 
+                opacity: 1, 
+                rotate: 0,
+                scale: 1
+              }}
+              exit={{ 
+                opacity: 0, 
+                rotate: sortConfig.direction === 'asc' ? 90 : -90,
+                scale: 0.5
+              }}
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+              className="text-brand"
+            >
+              {sortConfig.direction === 'asc' ? (
+                <ChevronUp size={12} className="stroke-[3px]" />
+              ) : (
+                <ChevronDown size={12} className="stroke-[3px]" />
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
   };
 
   return (
@@ -2094,53 +2154,116 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
       <div className="overflow-x-auto hide-scrollbar relative z-10">
         <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px]">
           <thead>
-            <tr className="uppercase text-[10px] font-black tracking-widest text-slate-400 select-none">
-              <th className="px-6 py-3 cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('name')}>
-                <div className="flex items-center gap-1">Ticker <SortIndicator column="name" /></div>
+            <tr className="uppercase text-[9px] font-black tracking-[0.2em] text-slate-400 select-none">
+              <th className={`px-6 py-4 cursor-pointer rounded-l-2xl transition-all duration-500 group/th ${sortConfig.key === 'name' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('name')}>
+                <div className="flex items-center gap-1.5">
+                  <span className="relative">
+                    Ticker
+                    {sortConfig.key === 'name' && (
+                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
+                    )}
+                  </span>
+                  <SortIndicator column="name" />
+                </div>
               </th>
-              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('qty')}>
-                <div className="flex items-center justify-end gap-1">Units <SortIndicator column="qty" /></div>
+              <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'qty' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('qty')}>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="relative">
+                    Units
+                    {sortConfig.key === 'qty' && (
+                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
+                    )}
+                  </span>
+                  <SortIndicator column="qty" />
+                </div>
               </th>
-              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('avg')}>
-                <div className="flex items-center justify-end gap-1">Cost Bas. <SortIndicator column="avg" /></div>
+              <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'avg' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('avg')}>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="relative">
+                    Cost Bas.
+                    {sortConfig.key === 'avg' && (
+                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
+                    )}
+                  </span>
+                  <SortIndicator column="avg" />
+                </div>
               </th>
-              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('ltp')}>
-                <div className="flex items-center justify-end gap-1">Market <SortIndicator column="ltp" /></div>
+              <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'ltp' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('ltp')}>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="relative">
+                    Market
+                    {sortConfig.key === 'ltp' && (
+                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
+                    )}
+                  </span>
+                  <SortIndicator column="ltp" />
+                </div>
               </th>
-              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('inv')}>
-                <div className="flex items-center justify-end gap-1">Invested <SortIndicator column="inv" /></div>
+              <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'inv' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('inv')}>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="relative">
+                    Invested
+                    {sortConfig.key === 'inv' && (
+                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
+                    )}
+                  </span>
+                  <SortIndicator column="inv" />
+                </div>
               </th>
-              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('cur')}>
-                <div className="flex items-center justify-end gap-1">Value <SortIndicator column="cur" /></div>
+              <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'cur' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('cur')}>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="relative">
+                    Value
+                    {sortConfig.key === 'cur' && (
+                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
+                    )}
+                  </span>
+                  <SortIndicator column="cur" />
+                </div>
               </th>
-              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('overallGlPct')}>
-                <div className="flex items-center justify-end gap-1">ROI <SortIndicator column="overallGlPct" /></div>
+              <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'overallGlPct' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('overallGlPct')}>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="relative">
+                    ROI
+                    {sortConfig.key === 'overallGlPct' && (
+                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
+                    )}
+                  </span>
+                  <SortIndicator column="overallGlPct" />
+                </div>
               </th>
-              <th className="px-6 py-3 text-right cursor-pointer hover:text-brand transition-colors" onClick={() => requestSort('dayGlPct')}>
-                <div className="flex items-center justify-end gap-1">Day Δ <SortIndicator column="dayGlPct" /></div>
+              <th className={`px-6 py-4 text-right cursor-pointer rounded-r-2xl transition-all duration-500 group/th ${sortConfig.key === 'dayGlPct' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('dayGlPct')}>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="relative">
+                    Day Δ
+                    {sortConfig.key === 'dayGlPct' && (
+                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
+                    )}
+                  </span>
+                  <SortIndicator column="dayGlPct" />
+                </div>
               </th>
             </tr>
           </thead>
           <tbody>
             <AnimatePresence initial={false} mode="popLayout">
-              {data.map((row, idx) => (
+              {data.map((row) => (
                 <motion.tr 
                   layout
                   key={row.id} 
-                  initial={{ opacity: 0, x: -20, filter: "blur(10px)" }}
-                  animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.2 } }}
                   transition={{ 
-                    layout: { type: "spring", stiffness: 350, damping: 35 },
-                    opacity: { duration: 0.2 },
-                    x: { type: "spring", stiffness: 300, damping: 30, delay: idx * 0.03 }
+                    layout: { type: "spring", stiffness: 200, damping: 25 },
+                    opacity: { duration: 0.3 }
                   }}
                   className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-all duration-300 ring-1 hover:ring-brand/30 rounded-2xl overflow-hidden`}
                 >
-                  <td className="px-6 py-5 first:rounded-l-2xl">
+                  <td className="px-6 py-5 first:rounded-l-2xl group/td-name">
                     <div className="flex items-center gap-3 font-bold text-slate-900 dark:text-white font-sans group/ticker relative">
-                      <div className={`w-8 h-8 rounded-xl ${row.type === 'SGB' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-[10px] font-black shadow-sm border`}>
-                        {row.type === 'SGB' ? <Coins size={14} /> : row.name.substring(0, 2).toUpperCase()}
+                      <div className={`w-9 h-9 rounded-xl ${row.type === 'SGB' ? 'bg-amber-500/15 text-amber-500 border-amber-500/30' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-[10px] font-black shadow-sm border transition-all duration-500 group-hover/ticker:scale-110 group-hover/ticker:shadow-lg`}>
+                        {row.type === 'SGB' ? <Coins size={16} /> : row.name.substring(0, 2).toUpperCase()}
                       </div>
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
@@ -2171,44 +2294,48 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
                   </td>
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">{row.qty}</td>
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.avg)}</td>
-                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-bold group/price">
+                  <td className="px-6 py-5 text-right font-mono text-[12px] text-slate-900 dark:text-white font-bold group/price">
                       <div 
-                        className={`flex items-center justify-end gap-2 ${row.type === 'SGB' ? 'cursor-pointer hover:text-amber-500 transition-colors' : ''}`}
+                        className={`flex items-center justify-end gap-3 p-2 -m-2 rounded-xl transition-all duration-500 ${row.type === 'SGB' ? 'cursor-pointer hover:bg-amber-500/10 hover:text-amber-500 shadow-xl shadow-amber-500/0 hover:shadow-amber-500/5' : ''}`}
                         onClick={() => row.type === 'SGB' && setEditingSgb(row)}
                       >
                          <div className="flex flex-col items-end">
-                           <div className="flex items-center gap-1.5">
-                              <span 
-                                className={`${row.type === 'SGB' ? 'border-b border-dashed border-amber-500/40 pb-0.5' : ''} cursor-help`}
-                                title={row.type === 'SGB' ? "Click to refresh this SGB with Gemini AI" : ""}
-                              >₹{formatAmt(row.ltp)}</span>
-                              {row.isAiVerified && (
-                                <Sparkles size={10} className="text-brand animate-pulse" />
-                              )}
-                              {row.type === 'SGB' && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    refreshPrices();
-                                  }}
-                                  disabled={isRefreshingPrices}
-                                  className="p-1 hover:bg-amber-500/10 rounded-md transition-colors text-amber-500/60 hover:text-amber-500"
-                                  title="Sync Market Intel"
-                                >
-                                  <RefreshCw size={10} className={isRefreshingPrices ? 'animate-spin' : ''} />
-                                </button>
-                              )}
-                           </div>
-                           {row.isAiVerified && (
-                             <span className="text-[6px] font-black text-brand uppercase tracking-widest mt-0.5 opacity-60">AI Life-Tracked</span>
-                           )}
+                            <div className="flex items-center gap-2">
+                               <span 
+                                 className={`${row.type === 'SGB' ? 'border-b-2 border-dotted border-amber-500/40 pb-0.5' : ''} transition-all duration-300 group-hover/price:scale-110 origin-right`}
+                               >₹{formatAmt(row.ltp)}</span>
+                               {row.isAiVerified && (
+                                 <motion.div
+                                   animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.2, 1] }}
+                                   transition={{ repeat: Infinity, duration: 2 }}
+                                 >
+                                   <Sparkles size={11} className="text-brand filter drop-shadow-[0_0_8px_rgba(255,200,0,0.5)]" />
+                                 </motion.div>
+                               )}
+                               {row.type === 'SGB' && (
+                                 <button
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     refreshPrices();
+                                   }}
+                                   disabled={isRefreshingPrices}
+                                   className="p-1.5 hover:bg-amber-500/20 rounded-lg transition-all text-amber-500/50 hover:text-amber-500 active:scale-75 shadow-sm hover:shadow-amber-500/20"
+                                   title="Force Sync with Gemini AI"
+                                 >
+                                   <RefreshCw size={11} className={`${isRefreshingPrices ? 'animate-spin' : 'group-hover/price:rotate-180 transition-transform duration-700'}`} />
+                                 </button>
+                               )}
+                            </div>
+                            {row.isAiVerified && (
+                              <span className="text-[6px] font-black text-brand uppercase tracking-[0.25em] mt-0.5 opacity-80 bg-brand/5 px-1 rounded">AI Verified Live</span>
+                            )}
                          </div>
                        {row.type === 'SGB' && (
                          <div 
-                           className="p-1.5 bg-amber-500/10 text-amber-500 rounded-lg group-hover/price:bg-amber-500 group-hover/price:text-white transition-all duration-200"
-                           title="Correct Price"
+                           className="w-7 h-7 flex items-center justify-center bg-amber-500/10 text-amber-500 rounded-lg group-hover/price:bg-amber-500 group-hover/price:text-white transition-all duration-300 shadow-sm"
+                           title="Manual Correction"
                          >
-                           <Palette size={10} />
+                           <Edit3 size={10} />
                          </div>
                        )}
                     </div>
@@ -2216,24 +2343,35 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.inv)}</td>
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">₹{formatAmt(row.cur)}</td>
                   <td className="px-6 py-5 text-right last:rounded-r-2xl">
-                    <div className={`flex flex-col items-end ${row.overallGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                      <div className="flex items-center gap-1.5 font-black text-xs">
-                        <span className="filter drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]">{row.overallGlAbs >= 0 ? '▲' : '▼'}</span> 
+                    <div className="flex flex-col items-end gap-1.5">
+                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-black text-[11px] ring-1 transition-all duration-300 ${row.overallGlAbs >= 0 ? 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20 shadow-lg shadow-emerald-500/5' : 'bg-rose-500/10 text-rose-500 ring-rose-500/20 shadow-lg shadow-rose-500/5'}`}>
+                        <span className="text-[10px]">{row.overallGlAbs >= 0 ? '▲' : '▼'}</span> 
                         <span>₹{formatAmt(Math.abs(row.overallGlAbs))}</span>
                       </div>
-                      <span className="text-[10px] font-bold opacity-80 bg-current/10 px-2 py-0.5 rounded-full mt-1">
+                      <div className={`inline-flex items-center gap-1.5 text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full ${row.overallGlPct > 0 ? 'text-emerald-500/80 bg-emerald-500/5' : 'text-rose-500/80 bg-rose-500/5'}`}>
+                        <TrendingUp size={8} />
                         {row.overallGlPct > 0 ? '+' : ''}{row.overallGlPct.toFixed(2)}%
-                      </span>
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <div className={`flex flex-col items-end ${row.dayGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                      <span className="font-bold text-[11px]">
+                    <div className="flex flex-col items-end gap-1">
+                      <div className={`flex items-center gap-1 font-bold text-[11px] ${row.dayGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                         <div className={`w-1 h-1 rounded-full ${row.dayGlAbs >= 0 ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
                          {row.dayGlAbs >= 0 ? '+' : ''}₹{formatAmt(row.dayGlAbs)}
-                      </span>
-                      <span className="text-[9px] font-bold opacity-70">
+                      </div>
+                      <div className={`text-[10px] font-black font-mono transition-all duration-300 ${row.dayGlAbs >= 0 ? 'text-emerald-500/60' : 'text-rose-500/60'}`}>
                         {row.dayGlPct > 0 ? '+' : ''}{row.dayGlPct.toFixed(2)}%
-                      </span>
+                      </div>
+                      {/* Magnitude Indicator */}
+                      <div className="w-16 h-1 bg-zinc-100 dark:bg-zinc-800 rounded-full mt-1 overflow-hidden relative">
+                         <motion.div 
+                           initial={{ width: 0 }}
+                           animate={{ width: `${Math.min(Math.abs(row.dayGlPct) * 10, 100)}%` }}
+                           className={`h-full absolute top-0 ${row.dayGlAbs >= 0 ? 'bg-emerald-500/40 right-1/2 rounded-l-full' : 'bg-rose-500/40 left-1/2 rounded-r-full'} transform ${row.dayGlAbs >= 0 ? '-translate-x-0' : ''}`}
+                         />
+                         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1px] h-full bg-zinc-300 dark:bg-zinc-700 z-10" />
+                      </div>
                     </div>
                   </td>
                 </motion.tr>
@@ -2254,396 +2392,6 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
         onSave={onSaveHolding}
         holding={editingSgb}
       />
-    </div>
-  );
-};
-
-const SgbMarketExplorer = ({ brandColor, onSaveHolding }: { brandColor: string, onSaveHolding: (h: any) => Promise<void> }) => {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState('');
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const { addToast } = useToasts();
-
-  const fetchSgbMarket = useCallback(async (customTerm?: string) => {
-    setLoading(true);
-    try {
-      const url = customTerm 
-        ? `/api/market/sgb-explorer?query=${encodeURIComponent(customTerm)}`
-        : '/api/market/sgb-explorer';
-      const res = await fetch(url);
-      const result = await res.json();
-      if (res.ok && result.data) {
-        // If we have a custom term, prioritize it by sorting matched symbols first
-        const sorted = result.data.sort((a: any, b: any) => {
-          if (customTerm) {
-            const aMatch = a.symbol.toUpperCase().includes(customTerm.toUpperCase());
-            const bMatch = b.symbol.toUpperCase().includes(customTerm.toUpperCase());
-            if (aMatch && !bMatch) return -1;
-            if (!aMatch && bMatch) return 1;
-          }
-          return b.volume - a.volume;
-        });
-        setData(sorted);
-        setLastRefreshed(new Date());
-      } else {
-        addToast("Explorer Error", result.error || "Market data unavailable.", "error");
-      }
-    } catch (e) {
-      addToast("Connection Error", "Failed to reach explorer API.", "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast]);
-
-  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
-
-  const handleGeminiSearch = async () => {
-    if (!filter || filter.length < 3) {
-      addToast("AI Insight", "Type a generic query first (e.g. 'bonds for 2029')", "info");
-      return;
-    }
-    
-    setIsGeminiLoading(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `You are an expert on Indian Sovereign Gold Bonds (SGB). 
-        The user typed: "${filter}". 
-        Identify the likely SGB series names/symbols they are looking for. 
-        SGB symbols usually follow the format SGBAUG28, SGBMAY29, etc. 
-        Sometimes they have Roman numerals like SGBAUG28V or are listed as "Sovereign Gold Bond 2028-29 Series V".
-        Return ONLY the most likely Angel One trading symbol (e.g. SGBAUG28V or SGBAUG28), or the top 3 symbols if multiple match, separated by commas. 
-        NO EXPLANATION. JUST SYMBOLS.`,
-      });
-      
-      const suggestion = response.text?.trim() || "";
-      if (suggestion) {
-        const topSymbol = suggestion.split(',')[0].trim().toUpperCase();
-        setFilter(topSymbol);
-        fetchSgbMarket(topSymbol);
-        addToast("AI Thinking", `Identified Series: ${suggestion}. Querying exchanges...`, "success");
-      }
-    } catch (e) {
-      console.error(e);
-      addToast("Gemini Error", "Could not connect to AI brain.", "error");
-    } finally {
-      setIsGeminiLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSgbMarket();
-  }, [fetchSgbMarket]);
-
-  const filteredData = useMemo(() => {
-    if (!filter) return data;
-    const f = filter.toUpperCase();
-    return data.filter(s => 
-      s.symbol.toUpperCase().includes(f) || 
-      s.name.toUpperCase().includes(f)
-    );
-  }, [data, filter]);
-
-  const handleQuickAdd = async (sgb: any) => {
-    const qty = window.prompt(`How many units of ${sgb.symbol} do you hold?`, "1");
-    if (qty === null) return;
-    
-    const qtyNum = parseInt(qty);
-    if (isNaN(qtyNum) || qtyNum <= 0) return;
-
-    const avg = window.prompt(`Average purchase price for ${sgb.symbol}?`, sgb.ltp.toString());
-    if (avg === null) return;
-
-    const avgNum = parseFloat(avg);
-    if (isNaN(avgNum) || avgNum <= 0) return;
-
-    try {
-      await onSaveHolding({
-        name: sgb.symbol.replace("-GB", ""),
-        qty: qtyNum,
-        avg: avgNum,
-        ltp: sgb.ltp,
-        pClose: sgb.pClose || sgb.ltp,
-        type: 'SGB',
-        symboltoken: sgb.token,
-        exchange: sgb.exchange
-      });
-      addToast("Asset Added", `${sgb.symbol} added to your holdings.`, "success");
-    } catch (e) {
-      addToast("Add Failed", "Could not add to holdings.", "error");
-    }
-  };
-
-  const SGB_SERIES_SUGGESTIONS = [
-    { label: "AUG 28 V", value: "AUG28V" },
-    { label: "NOV 28 VIII", value: "N28VIII" },
-    { label: "DEC 30 III", value: "DE30III" },
-    { label: "SERIES 2028", value: "SGB28" },
-    { label: "SERIES 2029", value: "SGB29" }
-  ];
-
-  return (
-    <div id="sgb-market-explorer" className="bg-[#0A0A0A] rounded-3xl border border-white/10 overflow-hidden shadow-2xl ring-1 ring-white/5 transition-all duration-500">
-      {/* Live Status Header */}
-      <div className="bg-amber-500/5 border-b border-white/5 px-6 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-500' : 'bg-emerald-500'} animate-pulse`} />
-          </div>
-          <span className="text-[9px] font-black font-mono text-zinc-500 uppercase tracking-widest">
-            {loading ? 'CONNECTING TO EXCHANGES...' : 'LIVE MARKET FEED ACTIVE'}
-          </span>
-        </div>
-        {lastRefreshed && (
-          <span className="text-[8px] font-mono font-black text-zinc-600 uppercase">
-            SYNCED: {lastRefreshed.toLocaleTimeString()}
-          </span>
-        )}
-      </div>
-      {/* Ticker Tape */}
-      <div className="bg-black/40 border-b border-white/5 py-2 overflow-hidden whitespace-nowrap relative">
-        <div className="inline-block animate-marquee flex items-center gap-10">
-          {data.slice(0, 20).map((s, i) => (
-            <div key={i} className="inline-flex items-center gap-2 group cursor-pointer hover:bg-white/5 px-2 rounded transition-colors">
-              <span className="text-[9px] font-black font-mono text-zinc-500 uppercase">{s.symbol}</span>
-              <span className="text-[10px] font-bold font-mono text-white">₹{formatAmt(s.ltp)}</span>
-              <span className={`text-[8px] font-black ${s.percentChange >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                {s.percentChange >= 0 ? '▲' : '▼'}{Math.abs(s.percentChange).toFixed(1)}%
-              </span>
-            </div>
-          ))}
-          {/* Duplicate for seamless effect */}
-          {data.slice(0, 20).map((s, i) => (
-            <div key={`dup-${i}`} className="inline-flex items-center gap-2 group cursor-pointer hover:bg-white/5 px-2 rounded transition-colors">
-              <span className="text-[9px] font-black font-mono text-zinc-500 uppercase">{s.symbol}</span>
-              <span className="text-[10px] font-bold font-mono text-white">₹{formatAmt(s.ltp)}</span>
-              <span className={`text-[8px] font-black ${s.percentChange >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                {s.percentChange >= 0 ? '▲' : '▼'}{Math.abs(s.percentChange).toFixed(1)}%
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-6 md:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-white/5">
-        <div className="flex items-center gap-5">
-          <div className="w-14 h-14 bg-amber-500 text-black rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.3)]">
-            <TrendingUp size={28} strokeWidth={3} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-black uppercase tracking-[0.3em] text-amber-500/80">SGB Market Intelligence</h4>
-              <div className="h-0.5 w-12 bg-white/10" />
-            </div>
-            <h2 className="text-3xl font-black text-white tracking-tighter uppercase italic -mt-1">
-              Active <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-white/40">Bonds</span>
-            </h2>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="relative group/search">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within/search:text-amber-500 transition-colors">
-              <Search size={14} />
-            </div>
-            <input 
-              type="text"
-              placeholder="FILTER BY SERIES (MONTH/YEAR)..."
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && filter.length > 2) {
-                  fetchSgbMarket(filter);
-                }
-              }}
-              className="bg-white/5 border border-white/10 rounded-xl px-10 py-2.5 text-[10px] font-black font-mono text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all w-full md:w-80"
-            />
-            <button 
-              onClick={handleGeminiSearch}
-              disabled={isGeminiLoading}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-400 transition-all hover:scale-110 disabled:opacity-30 disabled:animate-pulse"
-              title="AI Smart Search"
-            >
-              <Sparkles size={16} fill={isGeminiLoading ? 'currentColor' : 'none'} />
-            </button>
-            <div className="flex flex-wrap gap-2 mt-3 ml-1">
-              <span className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mt-1 mr-1">Trending:</span>
-              {SGB_SERIES_SUGGESTIONS.map(tag => (
-                <button 
-                  key={tag.value}
-                  onClick={() => {
-                    setFilter(tag.value);
-                    fetchSgbMarket(tag.value);
-                  }}
-                  className={`px-2 py-0.5 rounded-full border text-[7px] font-black transition-all uppercase tracking-widest ${
-                    filter.toUpperCase().includes(tag.value) 
-                    ? 'bg-amber-500 border-amber-500 text-black' 
-                    : 'bg-white/5 border-white/10 text-zinc-500 hover:text-white hover:border-white/20'
-                  }`}
-                >
-                  {tag.label}
-                </button>
-              ))}
-              {filter && (
-                <button 
-                  onClick={() => setFilter('')}
-                  className="px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[7px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          <button 
-            onClick={() => fetchSgbMarket()}
-            disabled={loading}
-            className="flex items-center gap-3 px-6 py-2.5 rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-amber-500 hover:text-black hover:shadow-[0_0_50px_rgba(245,158,11,0.4)] transition-all disabled:opacity-50 group shadow-lg"
-          >
-            <Activity size={14} className={`${loading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform'}`} />
-            {loading ? 'SYNCING...' : 'LIVE MARKET FEED'}
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
-        <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
-          <thead className="sticky top-0 z-20">
-            <tr className="border-b border-white/10 bg-[#0A0A0A] backdrop-blur-md">
-              <th className="w-16 p-5 text-[9px] font-black uppercase tracking-[0.4em] text-amber-500/50 text-center">RANK</th>
-              <th className="w-2/5 p-5 text-[9px] font-black uppercase tracking-[0.4em] text-white decoration-amber-500/20 underline-offset-8 border-l border-white/5">INSTRUMENT INDICATOR</th>
-              <th className="p-5 text-[9px] font-black uppercase tracking-[0.4em] text-amber-400 text-right bg-amber-400/5 font-mono">LIVE LTP</th>
-              <th className="p-5 text-[9px] font-black uppercase tracking-[0.4em] text-zinc-500 text-right">INTRADAY CHANGE</th>
-              <th className="p-5 text-[9px] font-black uppercase tracking-[0.4em] text-zinc-500 text-right">HI / LO</th>
-              <th className="p-5 text-[9px] font-black uppercase tracking-[0.4em] text-zinc-500 text-right">VOLUME</th>
-              <th className="w-40 p-5"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {loading && data.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-24 text-center">
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(245,158,11,0.2)]" />
-                    <span className="font-mono text-[10px] font-black text-amber-500 uppercase tracking-[0.5em] animate-pulse">Scanning Global Feeds...</span>
-                  </div>
-                </td>
-              </tr>
-            ) : filteredData.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-24 text-center">
-                  <div className="flex flex-col items-center gap-3 opacity-30">
-                    <Database size={40} className="text-zinc-500" />
-                    <p className="text-[10px] font-black font-mono text-zinc-500 uppercase tracking-[0.3em]">No matching tickers found on tape.</p>
-                  </div>
-                </td>
-              </tr>
-            ) : filteredData.map((sgb, i) => {
-              const isTrending = i < 10 && !filter;
-              return (
-                <tr 
-                  key={i} 
-                  className={`group hover:bg-white/[0.03] transition-all duration-150 cursor-default ${isTrending ? 'bg-amber-500/[0.02]' : ''}`}
-                >
-                  <td className={`p-5 font-mono text-[10px] text-center transition-all duration-300 border-r border-white/5 relative ${isTrending ? 'text-amber-400 font-black' : 'text-zinc-600 group-hover:text-amber-400 group-hover:bg-amber-400/5'}`}>
-                    {isTrending && (
-                      <div className="absolute top-0 left-0 w-[2px] h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
-                    )}
-                    <div className="flex flex-col items-center justify-center gap-0.5">
-                      <div className="flex items-center justify-center gap-1">
-                        <span className="opacity-40 whitespace-nowrap">#</span>
-                        <span className="group-hover:scale-110 transition-transform">{(i + 1).toString().padStart(2, '0')}</span>
-                      </div>
-                      {isTrending && (
-                        <span className="text-[6px] font-black text-amber-500/80 uppercase tracking-tighter leading-none mt-1 animate-pulse">TRENDING</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-5 border-l border-white/5 bg-white/[0.01] group-hover:bg-white/[0.04] transition-colors relative overflow-hidden">
-                    <div className="flex items-center gap-4 relative z-10">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 shadow-inner ${
-                        isTrending 
-                        ? 'bg-amber-500 text-black shadow-[0_0_20px_rgba(251,191,36,0.3)]' 
-                        : 'bg-gradient-to-br from-amber-500/20 to-amber-900/10 text-amber-500 group-hover:from-amber-400 group-hover:to-amber-500 group-hover:text-black group-hover:shadow-[0_0_20px_rgba(251,191,36,0.3)]'
-                      }`}>
-                        <Coins size={18} strokeWidth={isTrending ? 3 : 2.5} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-[13px] font-black tracking-[0.1em] text-white uppercase group-hover:text-amber-400 transition-colors">{sgb.symbol}</p>
-                          {isTrending && (
-                            <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="px-1.5 py-0.5 rounded-[4px] bg-white/10 text-[7px] font-black font-mono text-zinc-400 uppercase tracking-widest">{sgb.exchange}</span>
-                          <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-[0.2em] group-hover:text-white/60 transition-colors">{sgb.name.split(' ').slice(0, 3).join(' ')}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="absolute inset-0 bg-gradient-to-r from-amber-500/0 via-amber-500/0 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </td>
-                <td className="p-5 text-right bg-white/[0.005] group-hover:bg-amber-400/5 transition-all">
-                  <div className="flex flex-col items-end">
-                    <span className="text-[14px] font-mono font-black text-white tracking-tighter group-hover:text-amber-400">₹{formatAmt(sgb.ltp)}</span>
-                    <span className="text-[7px] font-black font-mono text-zinc-600 uppercase tracking-widest mt-0.5">Spot Value</span>
-                  </div>
-                </td>
-                <td className="p-5 text-right">
-                  <div className={`inline-flex flex-col items-end px-3 py-1 rounded-lg ${sgb.percentChange >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                    <span className="text-[11px] font-mono font-black">{sgb.percentChange >= 0 ? '+' : ''}{sgb.percentChange.toFixed(2)}%</span>
-                  </div>
-                </td>
-                <td className="p-5 text-right font-mono">
-                  <div className="flex flex-col items-end">
-                    <span className="text-[10px] font-bold text-emerald-500/80">H: ₹{formatAmt(sgb.high)}</span>
-                    <span className="text-[10px] font-bold text-rose-500/80">L: ₹{formatAmt(sgb.low)}</span>
-                  </div>
-                </td>
-                <td className="p-5 text-right">
-                  <span className="text-[12px] font-mono font-bold text-zinc-500 group-hover:text-white transition-colors">{sgb.volume.toLocaleString()}</span>
-                </td>
-                <td className="p-5 text-right">
-                  <button 
-                    onClick={() => handleQuickAdd(sgb)}
-                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-[9px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 hover:bg-amber-500 hover:text-black hover:border-amber-500 hover:scale-105 active:scale-95 transition-all duration-300"
-                  >
-                    ACQUIRE HOLDING
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-
-      <div className="p-6 bg-black/40 border-t border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-wrap gap-6">
-           <div className="flex items-center gap-2">
-             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_#10b981]" />
-             <span className="text-[8px] font-black text-zinc-500 uppercase tracking-[0.2em]">Live Data Stream Active</span>
-           </div>
-           {lastRefreshed && (
-             <div className="flex items-center gap-2">
-               <Calendar size={10} className="text-zinc-600" />
-               <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest">SYNCED: {lastRefreshed.toLocaleTimeString().toUpperCase()}</span>
-             </div>
-           )}
-           <div className="flex items-center gap-2">
-             <Database size={10} className="text-zinc-600" />
-             <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest">RECORDS: {filteredData.length} ACTIVE BONDS</span>
-           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <ShieldCheck size={12} className="text-amber-500/40" />
-          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-[0.3em]">
-            Institutional Grade Market Data Feed
-          </p>
-        </div>
-      </div>
     </div>
   );
 };
@@ -2744,12 +2492,6 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     }
   };
 
-  const saveFundHistoryToFirestore = async (funds: any) => {
-    if (!user) return;
-    // ... impl from AngelOneIntegration usage or other source
-    // For now keeping consistent
-  };
-
   const saveToTransactions = async (date: string, deposit: string, withdrawal: string) => {
     if (!user) return;
     const txnId = `api_${date}_${Date.now()}`;
@@ -2780,7 +2522,26 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       handleFirestoreError(error, OperationType.WRITE, path);
     }
   };
-  const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
+  const [benchmarkMarketData, setBenchmarkMarketData] = useState<any[]>([]);
+  const [isFetchingBenchmark, setIsFetchingBenchmark] = useState(false);
+
+  useEffect(() => {
+    const fetchBenchmark = async () => {
+      setIsFetchingBenchmark(true);
+      try {
+        const { data } = await fetchJson('/api/market/benchmark');
+        if (data.status === 'success' && data.history) {
+          setBenchmarkMarketData(data.history);
+        }
+      } catch (err) {
+        console.error("Failed to fetch benchmark data", err);
+      } finally {
+        setIsFetchingBenchmark(false);
+      }
+    };
+    fetchBenchmark();
+  }, []);
+
   const [prompts, setPrompts] = useState<any[]>([]);
   const [holdings, setHoldings] = useState<any[]>([]);
   const [apiTrades, setApiTrades] = useState<any[]>([]);
@@ -2872,9 +2633,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       setPortfolioHistory([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], marketValue: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, histPath.path));
     const unsubBench = onSnapshot(benchPath, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setBenchmarkHistory([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], price: '' }]);
+      // Benchmark data no longer needed locally as per user request
     }, (error) => handleFirestoreError(error, OperationType.LIST, benchPath.path));
     const unsubPrompts = onSnapshot(promptsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
@@ -2971,22 +2730,6 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       return next;
     });
     deleteCloudDoc('history', id);
-  };
-  const handleBmChange = (id: string, field: string, value: any) => {
-    const row = benchmarkHistory.find(b => b.id === id);
-    if (!row) return;
-    const updated = { ...row, [field]: value };
-    setBenchmarkHistory(prev => prev.map(b => b.id === id ? updated : b));
-    if (updated.date && updated.price !== '') updateCloudDoc('benchmark', id, updated);
-  };
-  const handleBmDelete = (id: string) => {
-    setBenchmarkHistory(prev => {
-      const next = prev.filter(b => b.id !== id);
-      const hasEmpty = next.some(b => b.price === '');
-      if (!hasEmpty) next.push({ id: generateId(), date: new Date().toISOString().split('T')[0], price: '' });
-      return next;
-    });
-    deleteCloudDoc('benchmark', id);
   };
   const handlePromptChange = (id: string, field: string, value: any) => {
     const row = prompts.find(p => p.id === id);
@@ -3126,7 +2869,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
   const validTxns = useMemo(() => transactions.filter(t => t.date && (t.deposit !== '' || t.withdrawal !== '')).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [transactions]);
   const validHistory = useMemo(() => portfolioHistory.filter(p => p.date && p.marketValue !== '').sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [portfolioHistory]);
-  const validBench = useMemo(() => benchmarkHistory.filter(b => b.date && b.price !== '').sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [benchmarkHistory]);
+  const validBench = useMemo(() => {
+    return benchmarkMarketData
+      .filter(b => b.date && (b.price !== '' && b.price !== null))
+      .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [benchmarkMarketData]);
   const validPrompts = useMemo(() => {
     return prompts
       .filter(p => p.title && p.content)
@@ -3192,13 +2939,13 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const xirr = calculateXIRR(cashFlows);
     const rate = (xirr !== null && xirr > 0 && xirr < 0.5) ? xirr : 0.10;
 
-    // Calculate Benchmark CAGR
+    // Calculate Benchmark CAGR from real API data if available
     let benchCAGR = null;
-    if (validBench.length > 1) {
-      const startPrice = Number(validBench[0].price);
-      const endPrice = Number(validBench[validBench.length - 1].price);
-      const startTime = new Date(validBench[0].date).getTime();
-      const endTime = new Date(validBench[validBench.length - 1].date).getTime();
+    if (benchmarkMarketData.length > 1) {
+      const startPrice = Number(benchmarkMarketData[0].price);
+      const endPrice = Number(benchmarkMarketData[benchmarkMarketData.length - 1].price);
+      const startTime = new Date(benchmarkMarketData[0].date).getTime();
+      const endTime = new Date(benchmarkMarketData[benchmarkMarketData.length - 1].date).getTime();
       const years = Math.max(0.001, (endTime - startTime) / (1000 * 60 * 60 * 24 * 365.25));
       if (startPrice > 0 && endPrice > 0) {
         benchCAGR = Math.pow(endPrice / startPrice, 1 / years) - 1;
@@ -3236,18 +2983,18 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       f10: curMV*Math.pow(1+rate,10) + avgY*((Math.pow(1+rate,10)-1)/rate), 
       f20: curMV*Math.pow(1+rate,20) + avgY*((Math.pow(1+rate,20)-1)/rate) 
     };
-  }, [validTxns, validHistory, validBench, holdings, apiSummary]);
+  }, [validTxns, validHistory, benchmarkMarketData, holdings, apiSummary]);
 
   const chartData = useMemo(() => {
-    const dates = Array.from(new Set([...validTxns.map(t => t.date), ...validHistory.map(p => p.date), ...validBench.map(b => b.date)])).sort();
+    const dates = Array.from(new Set([...validTxns.map(t => t.date), ...validHistory.map(p => p.date), ...benchmarkMarketData.map(b => b.date)])).sort();
     let dep = 0, units = 0, mv = 0;
     return dates.map(d => {
-      const p = getPriceForDate(d, validBench);
+      const p = getPriceForDate(d, benchmarkMarketData);
       validTxns.filter(t => t.date === d).forEach(t => { const flow = (Number(t.deposit)||0) - (Number(t.withdrawal)||0); dep += flow; units += p > 0 ? (flow/p) : 0; });
       const h = validHistory.find(x => x.date === d); if (h) mv = Number(h.marketValue);
       return { date: d, "Cumulative Net Deposits": dep, "Market Value": mv || dep, "Benchmark Value": units * p };
     });
-  }, [validTxns, validHistory, validBench]);
+  }, [validTxns, validHistory, benchmarkMarketData]);
 
   if (authError) {
     return (
@@ -3352,8 +3099,8 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <button onClick={() => scrollToSection('dashboards')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Dashboards</button>
               <button onClick={() => scrollToSection('performance')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Performance Comparison</button>
               <button onClick={() => scrollToSection('savings')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Net Savings</button>
-              <button onClick={() => scrollToSection('sgb-market-explorer')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">SGB Market</button>
-              <button onClick={() => scrollToSection('api-trades')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Transactions</button>
+              <button onClick={() => scrollToSection('holdings')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Equity Dashboard</button>
+              
               <button onClick={() => scrollToSection('prompts')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Prompts</button>
               <button onClick={() => scrollToSection('documents')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Documents</button>
             </div>
@@ -3447,6 +3194,82 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 </motion.div>
               </div>
 
+              {/* Benchmark Market Pulse */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.5 }}
+                className="glass-card rounded-2xl p-4 md:p-6 mb-8 border border-brand/10 shadow-xl shadow-brand/5 relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                  <TrendingUp size={120} className="text-brand" />
+                </div>
+                
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <h3 className="text-slate-900 dark:text-white font-black text-sm md:text-base uppercase tracking-tighter flex items-center gap-2">
+                        Benchmark Pulse: NIFTYBEES
+                        <span className="text-[10px] font-bold text-zinc-500 tracking-normal normal-case opacity-60">(Yahoo Finance Source)</span>
+                      </h3>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">
+                        ₹{benchmarkMarketData.length > 0 ? formatAmt(benchmarkMarketData[benchmarkMarketData.length - 1].price) : '0.00'}
+                      </span>
+                      {benchmarkMarketData.length > 1 && (() => {
+                        const last = benchmarkMarketData[benchmarkMarketData.length - 1].price;
+                        const prev = benchmarkMarketData[benchmarkMarketData.length - 2].price;
+                        const diff = last - prev;
+                        const pct = (diff / prev) * 100;
+                        return (
+                          <div className={`flex items-center gap-1 text-xs font-bold ${diff >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {diff >= 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(2)}%
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 max-w-2xl h-24 md:h-32">
+                    {benchmarkMarketData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={benchmarkMarketData}>
+                          <defs>
+                            <linearGradient id="niftyGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <Tooltip 
+                            contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: 'none', borderRadius: 12, boxShadow: '0 10px 30px -10px rgba(0,0,0,0.5)'}}
+                            labelStyle={{display: 'none'}}
+                            itemStyle={{color: '#6366f1', fontWeight: 900, fontSize: '12px'}}
+                            formatter={(v: number) => [`₹${formatAmt(v)}`, 'NIFTYBEES']}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="price" 
+                            stroke="#6366f1" 
+                            strokeWidth={3} 
+                            dot={false} 
+                            animationDuration={2000}
+                            isAnimationActive={true}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center border border-dashed border-white/10 rounded-xl bg-black/5">
+                        <div className="flex items-center gap-3 text-zinc-500 text-xs font-bold uppercase tracking-widest animate-pulse">
+                          <Activity size={16} /> Syncing Market Data...
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+
               <motion.div 
                 id="performance"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -3462,7 +3285,10 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-zinc-400" /> Net Deposits</div>
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-400" /> Market Value</div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-400" /> Benchmark</div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-cyan-500/5 dark:bg-cyan-500/10 border border-cyan-500/20 shadow-sm shadow-cyan-500/5 group hover:bg-cyan-500/20 transition-all duration-300">
+                      <div className="w-1.5 h-1.5 md:w-2.5 md:h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.5)] group-hover:scale-125 transition-transform" /> 
+                      <span className="text-cyan-600 dark:text-cyan-400 font-black">Niftybees</span>
+                    </div>
                   </div>
                 </div>
                 <div className="h-[250px] md:h-[400px] w-full">
@@ -3488,9 +3314,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 <HoldingsTable user={user} holdings={holdings} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
               </div>
 
-              <div id="sgb-market-explorer">
-                <SgbMarketExplorer brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
-              </div>
+
 
               {apiTrades.length > 0 && (
                 <div id="api-trades" className="space-y-6">
@@ -3579,7 +3403,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div className="pb-10">
-
+                <Footer />
               </div>
             </div>
           )}
@@ -3640,20 +3464,6 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                         marketValue: value
                       });
                     }}
-                    saveFundHistoryToFirestore={async (funds: any) => {
-                      if (!user) return;
-                      const date = funds.date || new Date().toISOString().split('T')[0];
-                      // Use a more unique ID to avoid overwriting multiple transactions on the same day
-                      // If the data has a unique id or voucher number, use it. Otherwise use date+payin+payout
-                      const uniqueSuffix = funds.voucherno || funds.voucherNo || funds.id || `${funds.payin}_${funds.payout}_${Math.random().toString(36).substr(2, 5)}`;
-                      const histId = `fund_${date}_${uniqueSuffix}`;
-                      await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/api_fund_history`, histId), {
-                        ...funds,
-                        id: histId,
-                        date: date,
-                        syncedAt: Date.now()
-                      }, { merge: true });
-                    }}
                     saveToTransactions={async (date: string, deposit: string, withdrawal: string) => {
                       if (!user) return;
                       // We save it to the manual transactions collection
@@ -3692,14 +3502,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
           {activeTab === 'data' && (
             <div className="space-y-6 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div id="sgb-market">
-                <SgbMarketExplorer brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
-              </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8 items-start">
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-start">
                 <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','particulars','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','particulars','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
                 <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
-                <Sheet title="Benchmark Sim" coll="benchmark" data={benchmarkHistory} onEdit={handleBmChange} onDelete={handleBmDelete} keys={['date','price']} onPaste={(e: any) => handlePaste(e,'benchmark',['date','price'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
               </div>
             </div>
           )}
