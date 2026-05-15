@@ -3178,15 +3178,22 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
   const chartData = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    const dates = Array.from(new Set([
+    const rawDates = Array.from(new Set([
       ...validTxns.map(t => t.date), 
       ...validHistory.map(p => p.date), 
       ...validBench.map(b => b.date),
       today
     ])).sort();
     
+    // Start from the date of the user's first transaction of deposit
+    const firstDepositTxn = validTxns.find(t => (Number(t.deposit) || 0) > 0);
+    const startDate = firstDepositTxn?.date;
+    const dates = startDate ? rawDates.filter(d => d >= startDate) : rawDates;
+
     let dep = 0, units = 0, mv = 0;
-    return dates.map(d => {
+    // We still need to accumulate dep and units from the VERY BEGINNING to have correct values at startDate
+    // So we iterate over rawDates but only return objects for dates >= startDate
+    return rawDates.map(d => {
       const p = getPriceForDate(d, validBench);
       validTxns.filter(t => t.date === d).forEach(t => { 
         const flow = (Number(t.deposit)||0) - (Number(t.withdrawal)||0); 
@@ -3197,13 +3204,15 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       const h = validHistory.find(x => x.date === d); 
       if (h) mv = Number(h.marketValue);
       
+      if (startDate && d < startDate) return null;
+
       return { 
         date: d, 
         "Cumulative Net Deposits": dep, 
         "Market Value": mv || dep, 
         "Benchmark Value": units * p
       };
-    });
+    }).filter(item => item !== null);
   }, [validTxns, validHistory, validBench]);
 
   if (authError) {
