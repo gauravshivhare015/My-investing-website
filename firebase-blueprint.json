@@ -122,6 +122,24 @@
         "updatedAt": { "type": "string" }
       }
     },
+    "BenchmarkHistoricalChunk": {
+      "title": "BenchmarkHistoricalChunk",
+      "description": "A chunk of historical benchmark data",
+      "type": "object",
+      "properties": {
+        "data": { "type": "array" },
+        "updatedAt": { "type": "number" }
+      }
+    },
+    "ManualBenchmark": {
+      "title": "ManualBenchmark",
+      "description": "Manual override for benchmark price",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "price": { "type": "number" }
+      }
+    },
     "BrokerSettings": {
       "title": "BrokerSettings",
       "description": "User credentials for various brokers",
@@ -177,6 +195,14 @@
     "/artifacts/{appId}/users/{userId}/api_summary/{summaryId}": {
       "schema": { "$ref": "#/entities/ApiSummary" },
       "description": "User portfolio summary from API"
+    },
+    "/artifacts/{appId}/users/{userId}/benchmark_historical/{chunkId}": {
+      "schema": { "$ref": "#/entities/BenchmarkHistoricalChunk" },
+      "description": "Chunks of historical benchmark data"
+    },
+    "/artifacts/{appId}/users/{userId}/manual_benchmark/{dateId}": {
+      "schema": { "$ref": "#/entities/ManualBenchmark" },
+      "description": "Manual benchmark price overrides"
     }
   }
 }

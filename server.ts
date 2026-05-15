@@ -757,12 +757,23 @@ async function startServer() {
     });
   }
 
+  // In-memory cache for benchmark data to improve performance
+  let benchmarkCache: { data: any, timestamp: number } | null = null;
+  const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
+
   // API Route to fetch Benchmark (Niftybees) historical data from Yahoo Finance
   app.get("/api/market/benchmark", async (req, res) => {
+    const startTime = Date.now();
     try {
-      console.log("Fetching Niftybees data from Yahoo Finance...");
+      // Check cache first
+      if (benchmarkCache && (Date.now() - benchmarkCache.timestamp < CACHE_DURATION)) {
+        console.log(`[PERF] Serving benchmark data from cache (took ${Date.now() - startTime}ms)`);
+        return res.json(benchmarkCache.data);
+      }
+
+      console.log(`[PERF] Cache miss. Fetching Niftybees data from Yahoo Finance...`);
       const symbol = "NIFTYBEES.NS";
-      const range = "6mo"; // 6 months of data
+      const range = "max"; // Fetch maximum available history (back to 2002 for Nifty BEES)
       const interval = "1d"; // Daily intervals
       
       // Using query2 which is often more stable in cloud environments
@@ -802,14 +813,23 @@ async function startServer() {
         volume: indicators.volume[i]
       })).filter((item: any) => item.price !== null);
 
-      res.json({
+      const responseData = {
         status: "success",
         symbol: symbol,
         company: "NIFTYBEES",
         lastPrice: result.meta.regularMarketPrice,
         currency: result.meta.currency,
         history: items
-      });
+      };
+
+      // Update cache
+      benchmarkCache = {
+        data: responseData,
+        timestamp: Date.now()
+      };
+
+      console.log(`[PERF] Yahoo Finance fetch completed in ${Date.now() - startTime}ms`);
+      res.json(responseData);
     } catch (error: any) {
       console.error("Yahoo Finance Benchmark Error:", error.message);
       // For fetch errors (ECONNREFUSED, ENOTFOUND, etc.) or timeouts

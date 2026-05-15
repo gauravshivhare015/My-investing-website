@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, animate } from 'motion/react';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer 
+  Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell 
 } from 'recharts';
 
 const formatAmt = (v: number) => {
@@ -15,13 +15,13 @@ import {
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon, Coins, Sparkles,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu, Settings, RefreshCw, Edit3
+  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu, Settings, RefreshCw, Edit3, Save, Clock, Loader2, Zap, Info, History
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // --- Firebase Imports ---
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { doc, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, onSnapshot, query, getDocs, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 // --- Error Handling & Toast Imports ---
@@ -386,6 +386,98 @@ const AnimatedLogo = ({ brandColor }: { brandColor: string }) => {
 };
 
 // --- UI Components ---
+const BenchmarkComparisonChart = ({ data, isDarkMode }: { data: any[], isDarkMode: boolean }) => {
+  return (
+    <div className="h-[250px] md:h-[350px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 10, right: 10, bottom: 5, left: -25 }}>
+          <CartesianGrid vertical={false} stroke={isDarkMode ? "#1f1f22" : "#e4e4e7"} strokeDasharray="3 3" opacity={0.5} />
+          <XAxis 
+            dataKey="date" 
+            tick={{fill:'#71717a', fontSize:9, fontWeight:600}} 
+            axisLine={false} 
+            tickLine={false} 
+            tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} 
+            minTickGap={30} 
+          />
+          <YAxis 
+            tick={{fill:'#71717a', fontSize:9, fontWeight:600}} 
+            axisLine={false} 
+            tickLine={false} 
+            tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} 
+          />
+          <Tooltip 
+            contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} 
+            itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} 
+            labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} 
+            formatter={(value: number) => `₹${value.toLocaleString('en-IN')}`} 
+          />
+          <Line 
+            type="monotone" 
+            dataKey="Cumulative Net Deposits" 
+            name="Principal Invested"
+            stroke={isDarkMode ? "#818cf8" : "#6366f1"} 
+            strokeWidth={2} 
+            strokeDasharray="5 5" 
+            dot={false} 
+          />
+          <Line 
+            type="monotone" 
+            dataKey="Benchmark Value" 
+            name="Benchmark Value"
+            stroke="#22d3ee" 
+            strokeWidth={3} 
+            dot={false} 
+            activeDot={{r:6, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: '#22d3ee'}} 
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+const AllocationPieChart = ({ breakdown, isDarkMode, brandColor }: any) => {
+  const data = [
+    { name: 'Stocks', value: breakdown.stocks, color: brandColor },
+    { name: 'SGB', value: breakdown.sgb, color: '#f59e0b' },
+    { name: 'Mutual Funds', value: breakdown.mf, color: '#06b6d4' }
+  ].filter(d => d.value > 0);
+
+  if (data.length === 0) return null;
+
+  return (
+    <div className="h-[200px] w-full flex items-center justify-center">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={60}
+            outerRadius={80}
+            paddingAngle={5}
+            dataKey="value"
+            stroke="none"
+          >
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip 
+            formatter={(v: number) => formatCurrency(v)}
+            contentStyle={{ backgroundColor: isDarkMode ? '#09090b' : '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.5)' }}
+            itemStyle={{ color: isDarkMode ? '#fff' : '#000', fontSize: '12px', fontWeight: 'bold' }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Allocation</span>
+        <span className="text-xs font-bold text-slate-900 dark:text-white">Active</span>
+      </div>
+    </div>
+  );
+};
+
 const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transactions: any[], isDarkMode: boolean, brandColor: string }) => {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
@@ -680,24 +772,24 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, delay, ease: [0.16, 1, 0.3, 1] }}
-      className={`relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02] hover:bg-white/80 dark:hover:bg-white/[0.06] ${className}`}
+      className={`relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.01] hover:bg-white/80 dark:hover:bg-white/[0.06] ${className}`}
     >
       <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[1px] bg-white/0 ${lineGlow} blur-[1px] transition-all duration-500`} />
-      <div className="flex items-center justify-between mb-3 md:mb-4">
-        <h3 className="text-[10px] md:text-sm font-bold text-slate-800 dark:text-white tracking-widest uppercase">{title}</h3>
-        <div className={`p-1.5 md:p-2 bg-slate-50 dark:bg-white/5 rounded-lg md:rounded-xl md:bg-slate-50/50 ${colorClass} group-hover:scale-110 transition-all duration-300 shadow-sm border border-slate-100 dark:border-0`}>
-          <Icon size={18} strokeWidth={2.5} />
+      <div className="flex items-center justify-between mb-2 md:mb-4 gap-2">
+        <h3 className="text-[9px] md:text-sm font-bold text-slate-800 dark:text-white tracking-[0.1em] md:tracking-widest uppercase truncate">{title}</h3>
+        <div className={`p-1.5 md:p-2 bg-slate-50 dark:bg-white/5 rounded-lg md:rounded-xl md:bg-slate-50/50 ${colorClass} group-hover:scale-110 transition-all duration-300 shadow-sm border border-slate-100 dark:border-0 shrink-0`}>
+          <Icon size={16} strokeWidth={2.5} />
         </div>
       </div>
       <div>
-        <div className="text-xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-1 tracking-tight truncate">
+        <div className="text-xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-0.5 tracking-tight truncate">
           {typeof rawValue === 'number' ? <NumberTicker value={rawValue} /> : value}
         </div>
         {subtext && (
-          <div className={`text-[10px] md:text-sm flex items-center gap-1 mt-1 md:mt-2 font-medium ${trend === 'up' ? 'text-emerald-500' : trend === 'down' ? 'text-rose-500' : 'text-slate-500'}`}>
-            {trend === 'up' && <ArrowUpRight size={14} strokeWidth={2.5} />}
-            {trend === 'down' && <ArrowDownRight size={14} strokeWidth={2.5} />}
-            {subtext}
+          <div className={`text-[9px] md:text-sm flex flex-wrap items-center gap-1 mt-1 font-medium ${trend === 'up' ? 'text-emerald-500' : trend === 'down' ? 'text-rose-500' : 'text-slate-500'}`}>
+            {trend === 'up' && <ArrowUpRight className="shrink-0" size={14} strokeWidth={2.5} />}
+            {trend === 'down' && <ArrowDownRight className="shrink-0" size={14} strokeWidth={2.5} />}
+            <span className="truncate">{subtext}</span>
           </div>
         )}
       </div>
@@ -856,11 +948,53 @@ const formatPercent = (value: number | null | undefined) => {
 const getPriceForDate = (dateStr: string, sortedBenchData: any[]) => {
   if (!sortedBenchData || sortedBenchData.length === 0) return 1; 
   const targetTime = new Date(dateStr).getTime();
-  for (let i = sortedBenchData.length - 1; i >= 0; i--) {
-    const bTime = new Date(sortedBenchData[i].date).getTime();
-    if (bTime <= targetTime) return Number(sortedBenchData[i].price);
+  
+  // Use binary search for better performance on large datasets
+  let low = 0;
+  let high = sortedBenchData.length - 1;
+  let result = Number(sortedBenchData[0].price);
+  
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const bTime = new Date(sortedBenchData[mid].date).getTime();
+    
+    if (bTime <= targetTime) {
+      result = Number(sortedBenchData[mid].price);
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
   }
-  return Number(sortedBenchData[0].price);
+  return result;
+};
+
+const ScrollToTop = () => {
+  const [visible, setVisible] = useState(false);
+  
+  useEffect(() => {
+    const toggleVisible = () => {
+      if (window.pageYOffset > 500) setVisible(true);
+      else setVisible(false);
+    };
+    window.addEventListener('scroll', toggleVisible);
+    return () => window.removeEventListener('scroll', toggleVisible);
+  }, []);
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.5 }}
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-8 right-8 z-[100] w-12 h-12 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all md:hidden"
+        >
+          <ChevronUp size={24} />
+        </motion.button>
+      )}
+    </AnimatePresence>
+  );
 };
 
 
@@ -923,7 +1057,7 @@ const parseDDMMYYYYtoISO = (val: string) => {
   return trimmed;
 };
 
-const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore }: { user: any, brokerSettings?: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void> }) => {
+const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore, manualAssetsValue }: { user: any, brokerSettings?: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void>, manualAssetsValue?: number }) => {
   const { addToast } = useToasts();
   const [configStatus, setConfigStatus] = useState<any>({ configured: false, status: {} });
   const [isSyncing, setIsSyncing] = useState(false);
@@ -997,6 +1131,9 @@ const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, sav
             type: type
           };
         });
+        // PORTFOLIO AUTOMATION BLOCKED AS PER USER REQUEST: "completely blocking any code-driven or automated modifications"
+        // The data is fetched but NOT saved to Firestore automatically.
+        /*
         for (const h of mapped) {
           await saveHoldingToFirestore(h);
         }
@@ -1009,33 +1146,18 @@ const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, sav
 
         if (data.funds) {
           await saveFundsToFirestore(data.funds);
-          
-          // Automatically sync to manual transactions
           const today = new Date().toISOString().split('T')[0];
           await saveToTransactions(today, data.funds.payin || '0', data.funds.payout || '0');
         }
+        */
 
-        // Auto-save portfolio value to history
-        const today = new Date();
-        const dateStr = today.toISOString().split('T')[0];
-        
-        // Calculate total value locally from mapped holdings for the history point
-        const calculatedTotal = mapped.reduce((acc: number, h: any) => acc + (h.qty * h.ltp), 0);
-        
-        // Use total value from API summary if available, or use our calculated total
-        let totalVal = 0;
+        // Sync Summary to state only (no Firestore)
         if (data.holdings_summary && data.holdings_summary.totalholdingvalue) {
-            totalVal = Math.max(Number(data.holdings_summary.totalholdingvalue), calculatedTotal);
-            await saveApiSummaryToFirestore(data.holdings_summary);
-        } else {
-            totalVal = calculatedTotal;
+            // await saveApiSummaryToFirestore(data.holdings_summary); // BLOCKED
         }
 
-        if (totalVal > 0) {
-          console.log(`Auto-saving portfolio value to history: ${totalVal} for ${dateStr}`);
-          await saveHistoryToFirestore(dateStr, totalVal);
-        }
-
+        addToast("Portfolio Data Fetched", "Live snapshots retrieved from Angel One. PERSISTENCE IS BLOCKED - Manual entry required for 'Data' board tracking.", "info");
+        
         if (data.ledger && Array.isArray(data.ledger)) {
             for (const item of data.ledger) {
                 // Angel One ledger items usually have 'date', 'credit', 'debit', 'balance', 'particulars', 'voucherno'
@@ -1664,36 +1786,15 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* 
   useEffect(() => {
     const checkScheduledRefresh = async () => {
       if (holdings.length === 0 || isRefreshingPrices) return;
-
-      const now = new Date();
-      // Use IST for market hour logic
-      const istLocale = now.toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' });
-      const istDate = istLocale.split(',')[0]; // DD/MM/YYYY
-      const istTime = now.toLocaleTimeString('en-GB', { 
-        timeZone: 'Asia/Kolkata', 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-      });
-      
-      const [hours, minutes] = istTime.split(':').map(Number);
-      const isAfterMarketClose = (hours > 15) || (hours === 15 && minutes >= 30);
-
-      if (isAfterMarketClose) {
-        const lastAutoRefresh = localStorage.getItem('last_auto_sgb_refresh');
-        if (lastAutoRefresh !== istDate) {
-          console.log(`Executing daily scheduled SGB sync for ${istDate} (Post 3:30 PM IST)`);
-          localStorage.setItem('last_auto_sgb_refresh', istDate);
-          refreshPrices();
-        }
-      }
+      // ... logic for auto refresh ...
     };
-
     checkScheduledRefresh();
-  }, [holdings.length]); // Run once when holdings load or change
+  }, [holdings.length]); 
+  */
 
   const resolveSgbToken = async (sgb: any) => {
     try {
@@ -2427,6 +2528,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
+  const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
 
   const saveHoldingToFirestore = async (holding: any) => {
     if (!user) return;
@@ -2522,26 +2624,6 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       handleFirestoreError(error, OperationType.WRITE, path);
     }
   };
-  const [benchmarkMarketData, setBenchmarkMarketData] = useState<any[]>([]);
-  const [isFetchingBenchmark, setIsFetchingBenchmark] = useState(false);
-
-  useEffect(() => {
-    const fetchBenchmark = async () => {
-      setIsFetchingBenchmark(true);
-      try {
-        const { data } = await fetchJson('/api/market/benchmark');
-        if (data.status === 'success' && data.history) {
-          setBenchmarkMarketData(data.history);
-        }
-      } catch (err) {
-        console.error("Failed to fetch benchmark data", err);
-      } finally {
-        setIsFetchingBenchmark(false);
-      }
-    };
-    fetchBenchmark();
-  }, []);
-
   const [prompts, setPrompts] = useState<any[]>([]);
   const [holdings, setHoldings] = useState<any[]>([]);
   const [apiTrades, setApiTrades] = useState<any[]>([]);
@@ -2615,7 +2697,6 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     if (!user) return;
     const txnsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
     const histPath = collection(db, 'artifacts', appId, 'users', user.uid, 'history');
-    const benchPath = collection(db, 'artifacts', appId, 'users', user.uid, 'benchmark');
     const promptsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'prompts');
     const filesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'files');
     const apiTradesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'api_trades');
@@ -2627,33 +2708,46 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setTransactions([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], deposit: '', withdrawal: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, txnsPath.path));
+
     const unsubHist = onSnapshot(histPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setPortfolioHistory([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], marketValue: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, histPath.path));
-    const unsubBench = onSnapshot(benchPath, (snapshot) => {
-      // Benchmark data no longer needed locally as per user request
-    }, (error) => handleFirestoreError(error, OperationType.LIST, benchPath.path));
+
+    const unsubBench = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'benchmark'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      setBenchmarkHistory([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], price: '' }]);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `artifacts/${appId}/users/${user.uid}/benchmark`));
+
     const unsubPrompts = onSnapshot(promptsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setPrompts([...data, { id: generateId(), title: '', content: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, promptsPath.path));
+
     const unsubFiles = onSnapshot(filesPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setFiles(data.sort((a, b) => b.uploadedAt - a.uploadedAt));
     }, (error) => handleFirestoreError(error, OperationType.LIST, filesPath.path));
+
     const unsubApiTrades = onSnapshot(apiTradesPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setApiTrades(data.sort((a, b) => new Date(b.filltime || b.updatetime || 0).getTime() - new Date(a.filltime || a.updatetime || 0).getTime()));
     }, (error) => handleFirestoreError(error, OperationType.LIST, apiTradesPath.path));
+
     const unsubApiSummary = onSnapshot(apiSummaryPath, (snapshot) => {
       if (snapshot.exists()) setApiSummary(snapshot.data());
     }, (error) => handleFirestoreError(error, OperationType.GET, apiSummaryPath.path));
+
     const unsubHoldings = onSnapshot(holdingsPath, (snapshot) => {
       setHoldings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => handleFirestoreError(error, OperationType.LIST, holdingsPath.path));
-    return () => { unsubTxns(); unsubHist(); unsubBench(); unsubPrompts(); unsubFiles(); unsubApiTrades(); unsubHoldings(); unsubApiSummary(); };
+
+    return () => { 
+      unsubTxns(); unsubHist(); unsubBench();
+      unsubPrompts(); unsubFiles(); unsubApiTrades(); unsubHoldings(); 
+    };
   }, [user]);
 
   const updateCloudDoc = async (collName: string, id: string, data: any) => {
@@ -2731,6 +2825,53 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     });
     deleteCloudDoc('history', id);
   };
+  const handleBenchChange = (id: string, field: string, value: any) => {
+    const row = benchmarkHistory.find(p => p.id === id);
+    if (!row) return;
+    const updated = { ...row, [field]: value };
+    setBenchmarkHistory(prev => prev.map(p => p.id === id ? updated : p));
+    if (updated.date && updated.price !== '') updateCloudDoc('benchmark', id, updated);
+  };
+  const handleBenchDelete = (id: string) => {
+    setBenchmarkHistory(prev => {
+      const next = prev.filter(p => p.id !== id);
+      const hasEmpty = next.some(p => p.price === '');
+      if (!hasEmpty) next.push({ id: generateId(), date: new Date().toISOString().split('T')[0], price: '' });
+      return next;
+    });
+    deleteCloudDoc('benchmark', id);
+  };
+  const clearHistory = async (collName: string, titleStr: string) => {
+    if (!user) return;
+    try {
+      const q = query(collection(db, 'artifacts', appId, 'users', user.uid, collName));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        addToast("No Data", `There are no records to clear in ${titleStr}.`, "info");
+        return;
+      }
+
+      const docs = snapshot.docs;
+      // Firestore batch limit is 500 operations
+      for (let i = 0; i < docs.length; i += 500) {
+        const batch = writeBatch(db);
+        const chunk = docs.slice(i, i + 500);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+
+      addToast("Data Cleared", `All ${titleStr} records have been removed successfully.`, "success");
+    } catch (error) {
+      console.error(error);
+      addToast("Clear Failed", `Failed to clear ${titleStr} records. Check permissions.`, "error");
+    }
+  };
+
+  const clearBenchmarkHistory = () => clearHistory('benchmark', 'Benchmark Closing Price');
+  const clearTransactions = () => clearHistory('transactions', 'Transactions');
+  const clearPortfolioHistory = () => clearHistory('history', 'Portfolio Value');
+
   const handlePromptChange = (id: string, field: string, value: any) => {
     const row = prompts.find(p => p.id === id);
     if (!row) return;
@@ -2809,7 +2950,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       const cols = row.split('\t').map((c: string) => c.trim());
       if (cols.some((c: string) => c.length > 0)) {
         const id = generateId();
-        const data: any = { id };
+        const data: any = { id, createdAt: Date.now() };
         keys.forEach((key, i) => {
           if (cols[i] !== undefined && cols[i] !== '') {
             if (key === 'date') data[key] = parseDDMMYYYYtoISO(cols[i]);
@@ -2824,6 +2965,42 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       }
     }
   };
+
+  const clearRecentHistory = async (collName: string, titleStr: string) => {
+    if (!user) return;
+    try {
+      const oneHourAgo = Date.now() - (60 * 60 * 1000);
+      const q = query(collection(db, 'artifacts', appId, 'users', user.uid, collName));
+      const snapshot = await getDocs(q);
+      
+      const docsToDelete = snapshot.docs.filter(d => {
+        const data = d.data() as any;
+        return data.createdAt && data.createdAt > oneHourAgo;
+      });
+
+      if (docsToDelete.length === 0) {
+        addToast("No Recent Data", `No records found added in the last hour for ${titleStr}. Note: Older records don't have timestamp tracking.`, "info");
+        return;
+      }
+
+      const { writeBatch } = await import('firebase/firestore');
+      for (let i = 0; i < docsToDelete.length; i += 500) {
+        const batch = writeBatch(db);
+        const chunk = docsToDelete.slice(i, i + 500);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      
+      addToast("Recent Data Cleared", `${docsToDelete.length} recent ${titleStr} records removed.`, "success");
+    } catch (error) {
+      console.error(error);
+      addToast("Clear Failed", "Could not clear recent data.", "error");
+    }
+  };
+
+  const clearRecentPortfolioHistory = () => clearRecentHistory('history', 'Portfolio Value');
+  const clearRecentTransactions = () => clearRecentHistory('transactions', 'Transactions');
+  const clearRecentBenchmark = () => clearRecentHistory('benchmark', 'Benchmark');
 
   const [isDragging, setIsDragging] = useState(false);
 
@@ -2870,10 +3047,10 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const validTxns = useMemo(() => transactions.filter(t => t.date && (t.deposit !== '' || t.withdrawal !== '')).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [transactions]);
   const validHistory = useMemo(() => portfolioHistory.filter(p => p.date && p.marketValue !== '').sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [portfolioHistory]);
   const validBench = useMemo(() => {
-    return benchmarkMarketData
+    return benchmarkHistory
       .filter(b => b.date && (b.price !== '' && b.price !== null))
       .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [benchmarkMarketData]);
+  }, [benchmarkHistory]);
   const validPrompts = useMemo(() => {
     return prompts
       .filter(p => p.title && p.content)
@@ -2937,19 +3114,27 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const cashFlows = validTxns.map(t => ({ date: new Date(t.date), amount: (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0) }));
     cashFlows.push({ date: new Date(), amount: -curMV });
     const xirr = calculateXIRR(cashFlows);
-    const rate = (xirr !== null && xirr > 0 && xirr < 0.5) ? xirr : 0.10;
+    // Use actual XIRR for projections if it's within a reasonable range (-20% to 100%), otherwise fallback to 10% for conservative estimates
+    const rate = (xirr !== null && xirr > -0.2 && xirr < 1.0) ? xirr : 0.10;
+    // For future wealth projection specifically, we apply a floor of 8% and cap of 25% to avoid absurd projections from volatile history
+    const projectionRate = Math.max(0.08, Math.min(0.25, rate));
 
-    // Calculate Benchmark CAGR from real API data if available
-    let benchCAGR = null;
-    if (benchmarkMarketData.length > 1) {
-      const startPrice = Number(benchmarkMarketData[0].price);
-      const endPrice = Number(benchmarkMarketData[benchmarkMarketData.length - 1].price);
-      const startTime = new Date(benchmarkMarketData[0].date).getTime();
-      const endTime = new Date(benchmarkMarketData[benchmarkMarketData.length - 1].date).getTime();
-      const years = Math.max(0.001, (endTime - startTime) / (1000 * 60 * 60 * 24 * 365.25));
-      if (startPrice > 0 && endPrice > 0) {
-        benchCAGR = Math.pow(endPrice / startPrice, 1 / years) - 1;
-      }
+    // SIMULATION: investing same amounts in Benchmark
+    let simulatedBenchValue = 0;
+    let benchXIRR = null;
+    if (validBench.length > 0 && validTxns.length > 0) {
+      const simulatedCashFlows: { date: Date, amount: number }[] = [];
+      let totalUnits = 0;
+      validTxns.forEach(t => {
+        const p = getPriceForDate(t.date, validBench);
+        const flow = (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0);
+        if (p > 0) totalUnits += flow / p;
+        simulatedCashFlows.push({ date: new Date(t.date), amount: flow });
+      });
+      const lastPrice = Number(validBench[validBench.length - 1].price);
+      simulatedBenchValue = totalUnits * lastPrice;
+      simulatedCashFlows.push({ date: new Date(), amount: -simulatedBenchValue });
+      benchXIRR = calculateXIRR(simulatedCashFlows);
     }
 
     const now = new Date();
@@ -2960,6 +3145,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       .reduce((acc, t) => acc + ((Number(t.deposit) || 0) - (Number(t.withdrawal) || 0)), 0);
     const projectedRemainder = (avgY / 365.25) * daysRemaining;
     const projectedYearEnd = actualYearToDate + projectedRemainder;
+
+    const fv = (p: number, r: number, t: number, pmt: number) => {
+      const r_annu = r === 0 ? 0.0001 : r; // prevent div by zero
+      return p * Math.pow(1 + r_annu, t) + pmt * ((Math.pow(1 + r_annu, t) - 1) / r_annu);
+    };
 
     return { 
       currentMV: curMV, 
@@ -2975,26 +3165,46 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       avgM: avgY/12, 
       avgD: avgY/365.25, 
       xirr, 
-      rate, 
-      benchCAGR,
+      rate: projectionRate, 
+      benchXIRR,
+      simulatedBenchValue,
       projectedYearEnd,
-      fEoY: curMV * Math.pow(1 + rate, daysRemaining / 365.25) + projectedRemainder,
-      f5: curMV*Math.pow(1+rate,5) + avgY*((Math.pow(1+rate,5)-1)/rate), 
-      f10: curMV*Math.pow(1+rate,10) + avgY*((Math.pow(1+rate,10)-1)/rate), 
-      f20: curMV*Math.pow(1+rate,20) + avgY*((Math.pow(1+rate,20)-1)/rate) 
+      fEoY: curMV * Math.pow(1 + projectionRate, daysRemaining / 365.25) + projectedRemainder,
+      f5: fv(curMV, projectionRate, 5, avgY),
+      f10: fv(curMV, projectionRate, 10, avgY),
+      f20: fv(curMV, projectionRate, 20, avgY)
     };
-  }, [validTxns, validHistory, benchmarkMarketData, holdings, apiSummary]);
+  }, [validTxns, validHistory, benchmarkHistory, holdings, apiSummary]);
 
   const chartData = useMemo(() => {
-    const dates = Array.from(new Set([...validTxns.map(t => t.date), ...validHistory.map(p => p.date), ...benchmarkMarketData.map(b => b.date)])).sort();
+    const today = new Date().toISOString().split('T')[0];
+    const dates = Array.from(new Set([
+      ...validTxns.map(t => t.date), 
+      ...validHistory.map(p => p.date), 
+      ...validBench.map(b => b.date),
+      today
+    ])).sort();
+    
     let dep = 0, units = 0, mv = 0;
     return dates.map(d => {
-      const p = getPriceForDate(d, benchmarkMarketData);
-      validTxns.filter(t => t.date === d).forEach(t => { const flow = (Number(t.deposit)||0) - (Number(t.withdrawal)||0); dep += flow; units += p > 0 ? (flow/p) : 0; });
-      const h = validHistory.find(x => x.date === d); if (h) mv = Number(h.marketValue);
-      return { date: d, "Cumulative Net Deposits": dep, "Market Value": mv || dep, "Benchmark Value": units * p };
+      const p = getPriceForDate(d, validBench);
+      validTxns.filter(t => t.date === d).forEach(t => { 
+        const flow = (Number(t.deposit)||0) - (Number(t.withdrawal)||0); 
+        dep += flow; 
+        units += p > 0 ? (flow/p) : 0; 
+      });
+      
+      const h = validHistory.find(x => x.date === d); 
+      if (h) mv = Number(h.marketValue);
+      
+      return { 
+        date: d, 
+        "Cumulative Net Deposits": dep, 
+        "Market Value": mv || dep, 
+        "Benchmark Value": units * p
+      };
     });
-  }, [validTxns, validHistory, benchmarkMarketData]);
+  }, [validTxns, validHistory, validBench]);
 
   if (authError) {
     return (
@@ -3061,48 +3271,48 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
       <div className="relative z-10 w-full pb-20">
         <nav className="border-b border-black/5 dark:border-white/5 bg-white/80 dark:bg-black/50 backdrop-blur-2xl sticky top-0 z-50 flex flex-col w-full">
-          <div className="h-20 flex items-center border-b border-black/5 dark:border-white/5 md:border-none">
-            <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
-              <div className="flex items-center gap-3">
+          <div className="h-16 md:h-20 flex items-center border-b border-black/5 dark:border-white/5 md:border-none">
+            <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center gap-4">
+              <div className="flex items-center gap-2 md:gap-3 shrink-0">
                 <AnimatedLogo brandColor={brandColor} />
-
-                <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
+                <button onClick={handleDownload} className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
                   <Download size={12} className="text-blue-400" />
-                  <span className="text-[9px] md:text-[10px] font-bold text-blue-400 uppercase tracking-tight">Export</span>
+                  <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tight">Export</span>
                 </button>
               </div>
-              <div className="flex items-center gap-2 md:gap-4 font-mono">
+              <div className="flex items-center gap-2 md:gap-4 shrink-0 overflow-x-auto no-scrollbar">
                 <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-full border border-slate-200/60 dark:border-white/10 shrink-0">
-                  <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Dashboard</button>
-                  <button onClick={() => setActiveTab('integrations')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'integrations' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Integrations</button>
-                  <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}>Data</button>
+                  <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Dash</button>
+                  <button onClick={() => setActiveTab('integrations')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'integrations' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Integrate</button>
+                  <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Data</button>
                 </div>
-                <button 
-                  onClick={handleLogout}
-                  className="p-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all"
-                  title="Log Out"
-                >
-                  <LogOut size={18} />
-                </button>
-                <button 
-                  onClick={() => setIsDarkMode(!isDarkMode)}
-                  className="p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/10 transition-all"
-                  aria-label="Toggle theme"
-                >
-                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-                </button>
+                <div className="flex items-center gap-1.5 md:gap-2">
+                  <button 
+                    onClick={() => setIsDarkMode(!isDarkMode)}
+                    className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 transition-all shrink-0"
+                    aria-label="Toggle theme"
+                  >
+                    {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+                  </button>
+                  <button 
+                    onClick={handleLogout}
+                    className="p-1.5 md:p-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all shrink-0"
+                    title="Log Out"
+                  >
+                    <LogOut size={16} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
           {activeTab === 'dashboard' && (
-            <div className="max-w-7xl mx-auto px-4 w-full overflow-x-auto hide-scrollbar flex items-center justify-start gap-6 py-3 text-xs md:text-sm font-bold tracking-tight text-slate-500 uppercase">
-              <button onClick={() => scrollToSection('dashboards')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Dashboards</button>
-              <button onClick={() => scrollToSection('performance')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Performance Comparison</button>
-              <button onClick={() => scrollToSection('savings')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Net Savings</button>
-              <button onClick={() => scrollToSection('holdings')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Equity Dashboard</button>
-              
-              <button onClick={() => scrollToSection('prompts')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Prompts</button>
-              <button onClick={() => scrollToSection('documents')} className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap">Documents</button>
+            <div className="max-w-7xl mx-auto px-4 w-full flex items-center justify-start gap-4 md:gap-8 py-2 md:py-3 text-[9px] md:text-xs font-black tracking-[0.15em] text-slate-400 dark:text-zinc-500 uppercase overflow-x-auto no-scrollbar scroll-smooth">
+              <button onClick={() => scrollToSection('dashboards')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Dashboards</button>
+              <button onClick={() => scrollToSection('performance')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Performance</button>
+              <button onClick={() => scrollToSection('savings')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Savings</button>
+              <button onClick={() => scrollToSection('holdings')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Equity</button>
+              <button onClick={() => scrollToSection('prompts')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Vault</button>
+              <button onClick={() => scrollToSection('documents')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Docs</button>
             </div>
           )}
         </nav>
@@ -3181,94 +3391,52 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                  className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02]"
+                  className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.01]"
                 >
-                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Future Wealth</h3><Rocket className="text-violet-400" size={18} strokeWidth={2.5} /></div>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase">End of Year</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white"><NumberTicker value={metrics.fEoY} /></span></div>
-                    <div className="flex justify-between items-baseline text-slate-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase">5 Years</span><span className="text-sm md:text-base font-semibold"><NumberTicker value={metrics.f5} /></span></div>
-                    <div className="flex justify-between items-baseline text-slate-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase">10 Years</span><span className="text-sm md:text-base font-semibold"><NumberTicker value={metrics.f10} /></span></div>
-                    <div className="flex justify-between items-baseline pt-1 border-t border-white/5"><span className="text-[9px] md:text-[10px] font-black text-violet-600 tracking-widest uppercase">20 Years</span><span className="text-base md:text-lg font-black text-violet-400"><NumberTicker value={metrics.f20} /></span></div>
+                  <div className="flex items-center justify-between mb-4 md:mb-5">
+                    <h3 className="text-[9px] md:text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Future Wealth</h3>
+                    <div className="flex items-center gap-2">
+                       <span className="text-[8px] font-black text-violet-500 px-2 py-0.5 bg-violet-500/10 rounded-full border border-violet-500/20">{(metrics.rate * 100).toFixed(1)}% PROJ.</span>
+                       <Rocket className="text-violet-400 shrink-0" size={18} strokeWidth={2.5} />
+                    </div>
                   </div>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-baseline gap-2"><span className="text-[9px] md:text-[10px] font-bold text-zinc-500 dark:text-zinc-400 tracking-widest uppercase whitespace-nowrap">End of Year</span><span className="text-sm md:text-lg font-bold text-slate-900 dark:text-white truncate"><NumberTicker value={metrics.fEoY} /></span></div>
+                    <div className="flex justify-between items-baseline gap-2 text-slate-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase whitespace-nowrap">5 Years</span><span className="text-xs md:text-base font-semibold truncate"><NumberTicker value={metrics.f5} /></span></div>
+                    <div className="flex justify-between items-baseline gap-2 text-slate-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase whitespace-nowrap">10 Years</span><span className="text-xs md:text-base font-semibold truncate"><NumberTicker value={metrics.f10} /></span></div>
+                    <div className="flex justify-between items-baseline gap-2 pt-1 border-t border-white/5"><span className="text-[9px] md:text-[10px] font-black text-violet-600 tracking-widest uppercase whitespace-nowrap">20 Years</span><span className="text-sm md:text-lg font-black text-violet-400 truncate"><NumberTicker value={metrics.f20} /></span></div>
+                  </div>
+                  
+                  {/* Benchmark Simulation Metric */}
+                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-white/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-black text-cyan-500 tracking-widest uppercase">Bench Simulation</span>
+                      <span className="hidden sm:inline text-[10px] font-bold text-zinc-500 lowercase">(Manual Entries)</span>
+                    </div>
+                    <div className="flex justify-between items-baseline gap-2">
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">Simulated Value</span>
+                      <span className="text-xs md:text-sm font-black text-cyan-400 truncate">₹{formatAmt(metrics.simulatedBenchValue)}</span>
+                    </div>
+                    <div className="flex justify-between items-baseline gap-2">
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">Simulated XIRR</span>
+                      <span className="text-[10px] md:text-xs font-bold text-emerald-500 whitespace-nowrap">{(metrics.benchXIRR || 0) * 100 >= 0 ? '▲' : '▼'} {Math.abs((metrics.benchXIRR || 0) * 100).toFixed(2)}%</span>
+                    </div>
+                  </div>
+
                   <div className="mt-4 pt-4 border-t border-slate-100 dark:border-white/10 space-y-2"><div className="flex justify-between items-center text-[7px] md:text-[8px] font-bold tracking-widest uppercase text-slate-500"><span>Progress to 10 Cr</span><span className="text-brand">{((metrics.f20 / 100000000) * 100).toFixed(1)}%</span></div><div className="w-full h-1 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-brand shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-1000" style={{ width: `${Math.min(100, (metrics.f20 / 100000000) * 100)}%` }} /></div></div>
+                </motion.div>
+
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.8, delay: 0.6 }}
+                  className="glass-card rounded-2xl p-4 md:p-6 border border-white/5 flex flex-col justify-center items-center relative overflow-hidden"
+                >
+                  <AllocationPieChart breakdown={metrics.breakdown} isDarkMode={isDarkMode} brandColor={brandColor} />
                 </motion.div>
               </div>
 
-              {/* Benchmark Market Pulse */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.5 }}
-                className="glass-card rounded-2xl p-4 md:p-6 mb-8 border border-brand/10 shadow-xl shadow-brand/5 relative overflow-hidden"
-              >
-                <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                  <TrendingUp size={120} className="text-brand" />
-                </div>
-                
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <h3 className="text-slate-900 dark:text-white font-black text-sm md:text-base uppercase tracking-tighter flex items-center gap-2">
-                        Benchmark Pulse: NIFTYBEES
-                        <span className="text-[10px] font-bold text-zinc-500 tracking-normal normal-case opacity-60">(Yahoo Finance Source)</span>
-                      </h3>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">
-                        ₹{benchmarkMarketData.length > 0 ? formatAmt(benchmarkMarketData[benchmarkMarketData.length - 1].price) : '0.00'}
-                      </span>
-                      {benchmarkMarketData.length > 1 && (() => {
-                        const last = benchmarkMarketData[benchmarkMarketData.length - 1].price;
-                        const prev = benchmarkMarketData[benchmarkMarketData.length - 2].price;
-                        const diff = last - prev;
-                        const pct = (diff / prev) * 100;
-                        return (
-                          <div className={`flex items-center gap-1 text-xs font-bold ${diff >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                            {diff >= 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(2)}%
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
 
-                  <div className="flex-1 max-w-2xl h-24 md:h-32">
-                    {benchmarkMarketData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={benchmarkMarketData}>
-                          <defs>
-                            <linearGradient id="niftyGradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <Tooltip 
-                            contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: 'none', borderRadius: 12, boxShadow: '0 10px 30px -10px rgba(0,0,0,0.5)'}}
-                            labelStyle={{display: 'none'}}
-                            itemStyle={{color: '#6366f1', fontWeight: 900, fontSize: '12px'}}
-                            formatter={(v: number) => [`₹${formatAmt(v)}`, 'NIFTYBEES']}
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="price" 
-                            stroke="#6366f1" 
-                            strokeWidth={3} 
-                            dot={false} 
-                            animationDuration={2000}
-                            isAnimationActive={true}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center border border-dashed border-white/10 rounded-xl bg-black/5">
-                        <div className="flex items-center gap-3 text-zinc-500 text-xs font-bold uppercase tracking-widest animate-pulse">
-                          <Activity size={16} /> Syncing Market Data...
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
 
               <motion.div 
                 id="performance"
@@ -3279,15 +3447,22 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
                   <div>
-                    <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs">Performance Comparison</h3>
-                    <p className="text-[8px] md:text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Total market value vs benchmark cagr</p>
+                    <h3 className="text-slate-900 dark:text-white font-bold uppercase tracking-widest text-[10px] md:text-xs tracking-[0.2em] flex items-center gap-2">
+                       Alpha Strategy Performance
+                    </h3>
+                    <p className="text-[8px] md:text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Net Portfolio vs Manual Benchmark</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-zinc-400" /> Net Deposits</div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-400" /> Market Value</div>
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-cyan-500/5 dark:bg-cyan-500/10 border border-cyan-500/20 shadow-sm shadow-cyan-500/5 group hover:bg-cyan-500/20 transition-all duration-300">
-                      <div className="w-1.5 h-1.5 md:w-2.5 md:h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.5)] group-hover:scale-125 transition-transform" /> 
-                      <span className="text-cyan-600 dark:text-cyan-400 font-black">Niftybees</span>
+                  <div className="flex flex-wrap items-center gap-2 md:gap-4">
+                    <div className="hidden md:flex flex-wrap items-center gap-3 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-indigo-500" /> Net Deposits</div>
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5 group relative cursor-help">
+                        <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-400" /> 
+                        Market Value
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-900 text-[8px] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 shadow-xl border border-white/10 tracking-widest">
+                          Manual History Snapshots
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-500" /> Benchmark</div>
                     </div>
                   </div>
                 </div>
@@ -3298,9 +3473,9 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                       <XAxis dataKey="date" tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} minTickGap={30} />
                       <YAxis tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
-                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#71717a" : "#94a3b8"} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#71717a' : '#94a3b8'}} />
-                      <Line type="monotone" dataKey="Market Value" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#34d399"}} />
-                      <Line type="monotone" dataKey="Benchmark Value" stroke="#22d3ee" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: '#22d3ee'}} />
+                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#818cf8" : "#6366f1"} strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#818cf8' : '#6366f1'}} />
+                      <Line type="monotone" dataKey="Market Value" stroke="#34d399" strokeWidth={3} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#34d399"}} />
+                      <Line type="monotone" dataKey="Benchmark Value" stroke="#22d3ee" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#22d3ee"}} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -3419,6 +3594,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <AngelOneIntegration 
                     user={user} 
+                    manualAssetsValue={metrics.sgbValue}
                     brokerSettings={brokerSettings}
                     saveHoldingToFirestore={async (holding: any) => {
                       if (!user) return;
@@ -3502,11 +3678,23 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
           {activeTab === 'data' && (
             <div className="space-y-6 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-start">
-                <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','particulars','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','particulars','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
-                <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} />
+                <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','particulars','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','particulars','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearTransactions} onClearRecent={clearRecentTransactions} />
+                <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearPortfolioHistory} onClearRecent={clearRecentPortfolioHistory} />
+                <Sheet 
+                  title="Benchmark Closing Price" 
+                  coll="benchmark" 
+                  data={benchmarkHistory} 
+                  onEdit={handleBenchChange} 
+                  onDelete={handleBenchDelete} 
+                  keys={['date','price']} 
+                  onPaste={(e: any) => handlePaste(e, 'benchmark', ['date', 'price'])} 
+                  brandColor={brandColor} 
+                  correctPin={CORRECT_PIN} 
+                  noLock={true}
+                  onClearAll={clearBenchmarkHistory}
+                  onClearRecent={clearRecentBenchmark}
+                />
               </div>
             </div>
           )}
@@ -3572,6 +3760,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
           </motion.div>
         )}
       </AnimatePresence>
+      <ScrollToTop />
     </div>
   );
 }
@@ -3595,14 +3784,28 @@ export default function App() {
   );
 }
 
-function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, correctPin }: any) {
-  const [isLocked, setIsLocked] = useState(true);
+function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, correctPin, noLock, onClearAll, onClearRecent }: any) {
+  const [isLocked, setIsLocked] = useState(!noLock);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showPasteArea, setShowPasteArea] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showRecentConfirm, setShowRecentConfirm] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleClear = () => {
+    onClearAll();
+    setShowClearConfirm(false);
+    setShowDropdown(false);
+  };
+
+  const handleClearRecent = () => {
+    onClearRecent();
+    setShowRecentConfirm(false);
+    setShowDropdown(false);
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -3726,6 +3929,60 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                 >
                   UNLOCK TO MODIFY {!isLocked && <ShieldCheck size={12} />}
                 </button>
+                {!isLocked && onClearRecent && (
+                  <div className="border-t border-black/5 dark:border-white/5 mt-1 pt-1">
+                    {showRecentConfirm ? (
+                      <div className="flex items-center gap-1 p-1">
+                        <button 
+                          onClick={handleClearRecent}
+                          className="flex-1 bg-amber-500 text-white text-[8px] font-black py-2 rounded-lg hover:bg-amber-600 transition-colors"
+                        >
+                          CONFIRM UNDO LAST HR
+                        </button>
+                        <button 
+                          onClick={() => setShowRecentConfirm(false)}
+                          className="px-2 py-2 bg-zinc-100 dark:bg-white/10 text-zinc-500 text-[8px] font-black rounded-lg hover:bg-zinc-200 dark:hover:bg-white/20 transition-colors"
+                        >
+                          CANCEL
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => setShowRecentConfirm(true)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between text-amber-500 hover:bg-amber-500/10 transition-colors"
+                      >
+                        REMOVE LAST 1HR <History size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!isLocked && onClearAll && (
+                  <div className="border-t border-black/5 dark:border-white/5 mt-1 pt-1">
+                    {showClearConfirm ? (
+                      <div className="flex items-center gap-1 p-1">
+                        <button 
+                          onClick={handleClear}
+                          className="flex-1 bg-rose-500 text-white text-[8px] font-black py-2 rounded-lg hover:bg-rose-600 transition-colors"
+                        >
+                          CONFIRM DELETE
+                        </button>
+                        <button 
+                          onClick={() => setShowClearConfirm(false)}
+                          className="px-2 py-2 bg-zinc-100 dark:bg-white/10 text-zinc-500 text-[8px] font-black rounded-lg hover:bg-zinc-200 dark:hover:bg-white/20 transition-colors"
+                        >
+                          CANCEL
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => setShowClearConfirm(true)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between text-rose-500 hover:bg-rose-500/10 transition-colors"
+                      >
+                        CLEAR ALL DATA <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
