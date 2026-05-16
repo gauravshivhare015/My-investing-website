@@ -3415,34 +3415,9 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                     <div className="flex justify-between items-baseline gap-2 text-slate-500 dark:text-zinc-400"><span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase whitespace-nowrap">10 Years</span><span className="text-xs md:text-base font-semibold truncate"><NumberTicker value={metrics.f10} /></span></div>
                     <div className="flex justify-between items-baseline gap-2 pt-1 border-t border-white/5"><span className="text-[9px] md:text-[10px] font-black text-violet-600 tracking-widest uppercase whitespace-nowrap">20 Years</span><span className="text-sm md:text-lg font-black text-violet-400 truncate"><NumberTicker value={metrics.f20} /></span></div>
                   </div>
-                  
-                  {/* Benchmark Simulation Metric */}
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-white/10 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[9px] font-black text-cyan-500 tracking-widest uppercase">Bench Simulation</span>
-                      <span className="hidden sm:inline text-[10px] font-bold text-zinc-500 lowercase">(Manual Entries)</span>
-                    </div>
-                    <div className="flex justify-between items-baseline gap-2">
-                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">Simulated Value</span>
-                      <span className="text-xs md:text-sm font-black text-cyan-400 truncate">₹{formatAmt(metrics.simulatedBenchValue)}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline gap-2">
-                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">Simulated XIRR</span>
-                      <span className="text-[10px] md:text-xs font-bold text-emerald-500 whitespace-nowrap">{(metrics.benchXIRR || 0) * 100 >= 0 ? '▲' : '▼'} {Math.abs((metrics.benchXIRR || 0) * 100).toFixed(2)}%</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-white/10 space-y-2"><div className="flex justify-between items-center text-[7px] md:text-[8px] font-bold tracking-widest uppercase text-slate-500"><span>Progress to 10 Cr</span><span className="text-brand">{((metrics.f20 / 100000000) * 100).toFixed(1)}%</span></div><div className="w-full h-1 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-brand shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-1000" style={{ width: `${Math.min(100, (metrics.f20 / 100000000) * 100)}%` }} /></div></div>
                 </motion.div>
 
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.8, delay: 0.6 }}
-                  className="glass-card rounded-2xl p-4 md:p-6 border border-white/5 flex flex-col justify-center items-center relative overflow-hidden"
-                >
-                  <AllocationPieChart breakdown={metrics.breakdown} isDarkMode={isDarkMode} brandColor={brandColor} />
-                </motion.div>
+
               </div>
 
 
@@ -3461,28 +3436,16 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                     </h3>
                     <p className="text-[8px] md:text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Net Portfolio vs Manual Benchmark</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 md:gap-4">
-                    <div className="hidden md:flex flex-wrap items-center gap-3 text-[8px] md:text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-indigo-500" /> Net Deposits</div>
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5 group relative cursor-help">
-                        <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-400" /> 
-                        Market Value
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-900 text-[8px] text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 shadow-xl border border-white/10 tracking-widest">
-                          Manual History Snapshots
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-white/5"><div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-500" /> Benchmark</div>
-                    </div>
-                  </div>
                 </div>
-                <div className="h-[250px] md:h-[400px] w-full">
+                <div className="h-[250px] md:h-[400px] w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -25 }}>
                         <CartesianGrid vertical={false} stroke={isDarkMode ? "#1f1f22" : "#e4e4e7"} strokeDasharray="3 3" />
                       <XAxis dataKey="date" tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} minTickGap={30} />
                       <YAxis tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
-                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#818cf8" : "#6366f1"} strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#818cf8' : '#6366f1'}} />
+                      <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: '10px', fontWeight: 600, paddingBottom: '10px', color: '#71717a' }} iconType="circle" />
+                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#818cf8" : "#6366f1"} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#818cf8' : '#6366f1'}} />
                       <Line type="monotone" dataKey="Market Value" stroke="#34d399" strokeWidth={3} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#34d399"}} />
                       <Line type="monotone" dataKey="Benchmark Value" stroke="#22d3ee" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#22d3ee"}} />
                     </LineChart>

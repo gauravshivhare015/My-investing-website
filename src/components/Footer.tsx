@@ -18,7 +18,7 @@ const Footer = () => {
   return (
     <footer className="relative mt-20 border-t border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/20 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 mb-12">
           
           {/* Brand & Socials Section */}
           <div className="space-y-6">
@@ -114,19 +114,6 @@ const Footer = () => {
                   </a>
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Disclaimer Section */}
-          <div className="space-y-6 lg:pl-4">
-            <div className="p-4 rounded-2xl bg-amber-500/[0.03] dark:bg-amber-500/[0.05] border border-amber-500/10 space-y-3">
-              <div className="flex items-center gap-2 text-amber-500">
-                <ShieldAlert size={14} className="stroke-[3px]" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Financial Disclaimer</span>
-              </div>
-              <p className="text-[11px] leading-relaxed text-slate-500 dark:text-zinc-400 font-medium">
-                The content provided on this platform is for informational purposes only and does not constitute financial, investment, or legal advice. Investing in financial markets involves risk. Always conduct your own research or consult with a qualified financial advisor before making investment decisions.
-              </p>
             </div>
           </div>
 
