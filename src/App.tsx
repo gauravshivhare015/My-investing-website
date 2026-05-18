@@ -631,7 +631,10 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
           weight: 600 as const,
         },
         filter: function(tooltipItem: any) {
-          return tooltipItem.raw !== 0 || tooltipItem.dataset.label !== 'Projected Remainder';
+          if (tooltipItem.dataset.label === 'Projected Remainder') {
+             return tooltipItem.raw !== 0;
+          }
+          return tooltipItem.raw !== 0;
         },
         callbacks: {
           title: (items: any[]) => {
@@ -931,6 +934,7 @@ const calculateXIRR = (cashFlows: any[], guess = 0.1) => {
     if (Math.abs(fValue) < 1e-6) return r;
     if (fDeriv === 0) break;
     r = r - fValue / fDeriv;
+    if (r <= -1) r = -0.99999;
   }
   return isNaN(r) ? null : r;
 };
@@ -1057,7 +1061,7 @@ const parseDDMMYYYYtoISO = (val: string) => {
   return trimmed;
 };
 
-const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore, manualAssetsValue }: { user: any, brokerSettings?: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void>, manualAssetsValue?: number }) => {
+const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, saveTradeToFirestore, saveFundsToFirestore, saveHistoryToFirestore, saveToTransactions, saveApiSummaryToFirestore, manualAssetsValue, angelOneEnabled, setAngelOneEnabled }: { user: any, brokerSettings?: any, saveHoldingToFirestore: (h: any) => Promise<void>, saveTradeToFirestore: (t: any) => Promise<void>, saveFundsToFirestore: (f: any) => Promise<void>, saveHistoryToFirestore: (date: string, value: number) => Promise<void>, saveToTransactions: (date: string, deposit: string, withdrawal: string) => Promise<void>, saveApiSummaryToFirestore: (summary: any) => Promise<void>, manualAssetsValue?: number, angelOneEnabled: boolean, setAngelOneEnabled: (v: boolean) => void }) => {
   const { addToast } = useToasts();
   const [configStatus, setConfigStatus] = useState<any>({ configured: false, status: {} });
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1228,9 +1232,14 @@ const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, sav
             </div>
           </div>
           {configStatus.configured && (
-            <div className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-bold uppercase tracking-widest border border-emerald-500/20">
-              Connected
-            </div>
+            <button 
+              onClick={() => setAngelOneEnabled(!angelOneEnabled)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 md:py-2 rounded-full border text-[10px] uppercase font-bold tracking-widest transition-all shrink-0 ${angelOneEnabled ? 'bg-brand/10 border-brand/20 text-brand' : 'bg-slate-500/10 border-slate-500/20 text-slate-500'}`}
+              title={angelOneEnabled ? "Angel One API sync is ON" : "Angel One API sync is OFF"}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${angelOneEnabled ? 'bg-brand shadow-[0_0_8px_var(--brand-color-rgb)]' : 'bg-slate-400'}`} />
+              {angelOneEnabled ? 'A1 Connected' : 'A1 Offline'}
+            </button>
           )}
         </div>
 
@@ -1447,8 +1456,8 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
   const [newQty, setNewQty] = useState('');
   const [newAvg, setNewAvg] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isAiVerifiedLocal, setIsAiVerifiedLocal] = useState(false);
 
   useEffect(() => {
     if (holding) {
@@ -1456,6 +1465,7 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
       setNewQty(holding.qty.toString());
       setNewAvg(holding.avg.toString());
       setShowDeleteConfirm(false);
+      setIsAiVerifiedLocal(!!holding.isAiVerified);
     }
   }, [holding]);
 
@@ -1473,6 +1483,7 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
       const match = text.match(/\d+(\.\d+)?/);
       if (match) {
         setNewPrice(match[0]);
+        setIsAiVerifiedLocal(true);
       }
     } catch (e) {
       console.error(e);
@@ -1486,12 +1497,17 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
     if (!newPrice || isNaN(Number(newPrice))) return;
     if (!newQty || isNaN(Number(newQty))) return;
     if (!newAvg || isNaN(Number(newAvg))) return;
+    
+    // Check if the price was actually edited manually after AI verification
+    const isPriceChangedFromAI = isAiVerifiedLocal && holding && Number(newPrice) !== Number(holding.ltp) && Number(newPrice) !== Number(newPrice); // This check is a bit flaky without full state, let's just use the boolean. 
+    // Wait, simpler: if user changes newPrice manually, we should probably set isAiVerifiedLocal to false. Let's add that to onChange of newPrice, or just rely on the existing state.
+    
     onSave({ 
       ...holding, 
       ltp: Number(newPrice), 
       qty: Number(newQty),
       avg: Number(newAvg),
-      isAiVerified: isAiLoading 
+      isAiVerified: isAiVerifiedLocal
     });
     onClose();
   };
@@ -1560,7 +1576,10 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
                       type="number"
                       step="any"
                       value={newPrice}
-                      onChange={(e) => setNewPrice(e.target.value)}
+                      onChange={(e) => {
+                        setNewPrice(e.target.value);
+                        setIsAiVerifiedLocal(false);
+                      }}
                       className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl pl-8 pr-14 py-4 text-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/50 transition-all font-mono font-bold"
                       required
                     />
@@ -1841,7 +1860,7 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
   );
 };
 
-const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void> }) => {
+const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean }) => {
   const { addToast } = useToasts();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
@@ -2210,6 +2229,126 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
     return 0;
   });
 
+  const apiData = isApiMode ? data.filter(h => h.symboltoken) : [];
+  const manualData = isApiMode ? data.filter(h => !h.symboltoken) : data;
+
+  const renderRow = (row: any) => (
+    <motion.tr 
+      layout
+      key={row.id} 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.2 } }}
+      transition={{ 
+        layout: { type: "spring", stiffness: 200, damping: 25 },
+        opacity: { duration: 0.3 }
+      }}
+      className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-all duration-300 ring-1 hover:ring-brand/30 rounded-2xl overflow-hidden`}
+    >
+      <td className="px-6 py-5 first:rounded-l-2xl group/td-name relative">
+        {row.type === 'SGB' && (
+          <div className="absolute inset-0 bg-gradient-to-r from-amber-500/[0.02] to-transparent pointer-events-none rounded-l-2xl" />
+        )}
+        <div className="flex items-center gap-3 font-bold text-slate-900 dark:text-white font-sans group/ticker relative">
+          <div className={`w-9 h-9 rounded-xl ${row.type === 'SGB' ? 'bg-gradient-to-br from-amber-400/20 to-yellow-600/10 text-amber-600 dark:text-amber-400 border-amber-500/30' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-[10px] font-black shadow-sm border transition-all duration-500 group-hover/ticker:scale-110 group-hover/ticker:shadow-lg`}>
+            {row.type === 'SGB' ? <Coins size={16} className="drop-shadow-sm" /> : row.name.substring(0, 2).toUpperCase()}
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className={`text-xs tracking-tight uppercase ${row.type === 'SGB' ? 'text-amber-700 dark:text-amber-300' : ''}`}>{row.name}</span>
+              {row.type === 'SGB' && (
+                <span className="text-[7px] font-black tracking-[0.15em] uppercase bg-gradient-to-r from-amber-500/10 to-transparent text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+                  Sovereign Gold
+                </span>
+              )}
+              {row.type === 'SGB' && row.isAiVerified && (
+                <span className="text-[7px] font-black tracking-widest uppercase bg-brand/10 text-brand px-1.5 py-0.5 rounded-full ring-1 ring-brand/20 flex items-center gap-1 shadow-sm">
+                  <Sparkles size={8} /> AI Active
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 opacity-0 group-hover/ticker:opacity-100 transition-all mt-0.5">
+              <div 
+                className="flex items-center gap-1 cursor-pointer hover:text-brand active:scale-95 transition-all text-zinc-500"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingHolding(row);
+                }}
+              >
+                <Edit3 size={10} className="text-current" />
+                <span className="text-[8px] font-black tracking-widest uppercase border-b border-current/20">Manage</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">{row.qty}</td>
+      <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.avg)}</td>
+      <td className="px-6 py-5 text-right font-mono text-[12px] text-slate-900 dark:text-white font-bold group/price">
+          <div 
+            className="flex items-center justify-end gap-3 p-2 -m-2 rounded-xl transition-all duration-500"
+          >
+             <div className="flex flex-col items-end">
+                <div className="flex items-center gap-2">
+                   <span 
+                     className="transition-all duration-300 group-hover/price:scale-110 origin-right"
+                   >₹{formatAmt(row.ltp)}</span>
+                   {row.isAiVerified && (
+                     <motion.div
+                       animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.2, 1] }}
+                       transition={{ repeat: Infinity, duration: 2 }}
+                     >
+                       <Sparkles size={11} className="text-brand filter drop-shadow-[0_0_8px_rgba(255,200,0,0.5)]" />
+                     </motion.div>
+                   )}
+                   {row.type === 'SGB' && (
+                     <button
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         refreshPrices();
+                       }}
+                       disabled={isRefreshingPrices}
+                       className="p-1.5 hover:bg-amber-500/20 rounded-lg transition-all text-amber-500/50 hover:text-amber-500 active:scale-75 shadow-sm hover:shadow-amber-500/20"
+                       title="Force Sync with Gemini AI"
+                     >
+                       <RefreshCw size={11} className={`${isRefreshingPrices ? 'animate-spin' : 'group-hover/price:rotate-180 transition-transform duration-700'}`} />
+                     </button>
+                   )}
+                </div>
+                {row.isAiVerified && (
+                  <span className="text-[6px] font-black text-brand uppercase tracking-[0.25em] mt-0.5 opacity-80 bg-brand/5 px-1 rounded">AI Verified Live</span>
+                )}
+             </div>
+        </div>
+      </td>
+      <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.inv)}</td>
+      <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">₹{formatAmt(row.cur)}</td>
+      <td className="px-6 py-5 text-right last:rounded-r-2xl">
+        <div className="flex flex-col items-end gap-1.5">
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-black text-[11px] ring-1 transition-all duration-300 ${row.overallGlAbs >= 0 ? 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20 shadow-lg shadow-emerald-500/5' : 'bg-rose-500/10 text-rose-500 ring-rose-500/20 shadow-lg shadow-rose-500/5'}`}>
+            <span className="text-[10px]">{row.overallGlAbs >= 0 ? '▲' : '▼'}</span> 
+            <span>₹{formatAmt(Math.abs(row.overallGlAbs))}</span>
+          </div>
+          <div className={`inline-flex items-center gap-1.5 text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full ${row.overallGlPct > 0 ? 'text-emerald-500/80 bg-emerald-500/5' : 'text-rose-500/80 bg-rose-500/5'}`}>
+            <TrendingUp size={8} />
+            {row.overallGlPct > 0 ? '+' : ''}{row.overallGlPct.toFixed(2)}%
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-5 text-right">
+        <div className="flex flex-col items-end gap-1">
+          <div className={`flex items-center gap-1 font-bold text-[11px] ${row.dayGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+             <div className={`w-1 h-1 rounded-full ${row.dayGlAbs >= 0 ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+             {row.dayGlAbs >= 0 ? '+' : ''}₹{formatAmt(row.dayGlAbs)}
+          </div>
+          <div className={`text-[10px] font-black font-mono transition-all duration-300 ${row.dayGlAbs >= 0 ? 'text-emerald-500/60' : 'text-rose-500/60'}`}>
+            {row.dayGlPct > 0 ? '+' : ''}{row.dayGlPct.toFixed(2)}%
+          </div>
+        </div>
+      </td>
+    </motion.tr>
+  );
+
   const SortIndicator = ({ column }: { column: string }) => {
     const isActive = sortConfig.key === column;
     
@@ -2293,21 +2432,22 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
           </div>
         </div>
 
-        <div className="flex items-center gap-3 md:gap-5">
+        <div className="flex flex-wrap items-center gap-3 md:gap-4 lg:gap-5 justify-end">
            <button 
              onClick={refreshPrices}
              disabled={isRefreshingPrices || holdings.length === 0}
-             className="px-6 py-3 text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-emerald-500/5 text-emerald-500 hover:bg-emerald-500/10 active:scale-95 transition-all flex items-center gap-3 border border-emerald-500/10 disabled:opacity-40 disabled:grayscale group shadow-lg shadow-emerald-500/5"
+             className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-emerald-500 text-white hover:bg-emerald-400 active:scale-95 transition-all flex items-center gap-3 border-b-2 border-emerald-700/50 disabled:opacity-50 disabled:grayscale group shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40"
            >
+              <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               {isRefreshingPrices ? (
-                <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 md:w-4 md:h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin relative z-10" />
               ) : (
-                <div className="relative">
+                <div className="relative z-10">
                   <Activity size={14} className="group-hover:animate-pulse" />
-                  <Sparkles size={8} className="absolute -top-1.5 -right-1.5 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Sparkles size={8} className="absolute -top-1.5 -right-1.5 text-white/90 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
               )}
-              <span className="hidden sm:inline">{isRefreshingPrices ? 'Updating...' : 'Live Refresh + AI'}</span>
+              <span className="hidden sm:inline relative z-10 drop-shadow-sm">{isRefreshingPrices ? 'Updating...' : 'Live Refresh + AI'}</span>
            </button>
            
            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800 hidden sm:block" />
@@ -2315,18 +2455,20 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
            <button 
              onClick={() => fileInputRef.current?.click()}
              disabled={isProcessing}
-             className="px-6 py-3 text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-zinc-900 dark:bg-white text-white dark:text-black hover:shadow-2xl hover:shadow-brand/20 active:scale-95 transition-all flex items-center gap-3 shadow-xl group disabled:opacity-50"
+             className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-100 hover:shadow-2xl hover:shadow-brand/20 active:scale-95 transition-all flex items-center gap-3 shadow-xl border-b-2 border-zinc-950 dark:border-zinc-300 group disabled:opacity-50"
            >
-              <Cpu size={14} className="group-hover:rotate-12 transition-transform" />
-              <span className="hidden sm:inline">{isProcessing ? 'Processing...' : 'AI Import'}</span>
+              <div className="absolute inset-0 bg-gradient-to-b from-white/10 dark:from-black/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Cpu size={14} className="group-hover:rotate-12 transition-transform relative z-10" />
+              <span className="hidden sm:inline relative z-10 drop-shadow-sm">{isProcessing ? 'Processing...' : 'AI Import'}</span>
            </button>
 
            <button 
              onClick={() => setIsManualModalOpen(true)}
-             className="px-6 py-3 text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-600 text-white hover:from-amber-400 hover:to-yellow-500 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-amber-500/20 hover:shadow-amber-500/40 group border-b-2 border-amber-700/50"
+             className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-amber-500 text-white hover:bg-amber-400 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-amber-500/20 hover:shadow-amber-500/40 group border-b-2 border-amber-700/50"
            >
-              <Coins size={14} className="group-hover:scale-110 transition-transform drop-shadow-md" />
-              <span className="hidden sm:inline drop-shadow-sm">Add SGB</span>
+              <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Coins size={14} className="group-hover:scale-110 transition-transform drop-shadow-md relative z-10" />
+              <span className="hidden sm:inline relative z-10 drop-shadow-sm">Add SGB</span>
            </button>
 
            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
@@ -2429,123 +2571,23 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
           </thead>
           <tbody>
             <AnimatePresence initial={false} mode="popLayout">
-              {data.map((row) => (
-                <motion.tr 
-                  layout
-                  key={row.id} 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.2 } }}
-                  transition={{ 
-                    layout: { type: "spring", stiffness: 200, damping: 25 },
-                    opacity: { duration: 0.3 }
-                  }}
-                  className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-all duration-300 ring-1 hover:ring-brand/30 rounded-2xl overflow-hidden`}
-                >
-                  <td className="px-6 py-5 first:rounded-l-2xl group/td-name relative">
-                    {row.type === 'SGB' && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-amber-500/[0.02] to-transparent pointer-events-none rounded-l-2xl" />
-                    )}
-                    <div className="flex items-center gap-3 font-bold text-slate-900 dark:text-white font-sans group/ticker relative">
-                      <div className={`w-9 h-9 rounded-xl ${row.type === 'SGB' ? 'bg-gradient-to-br from-amber-400/20 to-yellow-600/10 text-amber-600 dark:text-amber-400 border-amber-500/30' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-[10px] font-black shadow-sm border transition-all duration-500 group-hover/ticker:scale-110 group-hover/ticker:shadow-lg`}>
-                        {row.type === 'SGB' ? <Coins size={16} className="drop-shadow-sm" /> : row.name.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs tracking-tight uppercase ${row.type === 'SGB' ? 'text-amber-700 dark:text-amber-300' : ''}`}>{row.name}</span>
-                          {row.type === 'SGB' && (
-                            <span className="text-[7px] font-black tracking-[0.15em] uppercase bg-gradient-to-r from-amber-500/10 to-transparent text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
-                              Sovereign Gold
-                            </span>
-                          )}
-                          {row.type === 'SGB' && row.isAiVerified && (
-                            <span className="text-[7px] font-black tracking-widest uppercase bg-brand/10 text-brand px-1.5 py-0.5 rounded-full ring-1 ring-brand/20 flex items-center gap-1 shadow-sm">
-                              <Sparkles size={8} /> AI Active
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 opacity-0 group-hover/ticker:opacity-100 transition-all mt-0.5">
-                          <div 
-                            className="flex items-center gap-1 cursor-pointer hover:text-brand active:scale-95 transition-all text-zinc-500"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingHolding(row);
-                            }}
-                          >
-                            <Edit3 size={10} className="text-current" />
-                            <span className="text-[8px] font-black tracking-widest uppercase border-b border-current/20">Manage</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">{row.qty}</td>
-                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.avg)}</td>
-                  <td className="px-6 py-5 text-right font-mono text-[12px] text-slate-900 dark:text-white font-bold group/price">
-                      <div 
-                        className="flex items-center justify-end gap-3 p-2 -m-2 rounded-xl transition-all duration-500"
-                      >
-                         <div className="flex flex-col items-end">
-                            <div className="flex items-center gap-2">
-                               <span 
-                                 className="transition-all duration-300 group-hover/price:scale-110 origin-right"
-                               >₹{formatAmt(row.ltp)}</span>
-                               {row.isAiVerified && (
-                                 <motion.div
-                                   animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.2, 1] }}
-                                   transition={{ repeat: Infinity, duration: 2 }}
-                                 >
-                                   <Sparkles size={11} className="text-brand filter drop-shadow-[0_0_8px_rgba(255,200,0,0.5)]" />
-                                 </motion.div>
-                               )}
-                               {row.type === 'SGB' && (
-                                 <button
-                                   onClick={(e) => {
-                                     e.stopPropagation();
-                                     refreshPrices();
-                                   }}
-                                   disabled={isRefreshingPrices}
-                                   className="p-1.5 hover:bg-amber-500/20 rounded-lg transition-all text-amber-500/50 hover:text-amber-500 active:scale-75 shadow-sm hover:shadow-amber-500/20"
-                                   title="Force Sync with Gemini AI"
-                                 >
-                                   <RefreshCw size={11} className={`${isRefreshingPrices ? 'animate-spin' : 'group-hover/price:rotate-180 transition-transform duration-700'}`} />
-                                 </button>
-                               )}
-                            </div>
-                            {row.isAiVerified && (
-                              <span className="text-[6px] font-black text-brand uppercase tracking-[0.25em] mt-0.5 opacity-80 bg-brand/5 px-1 rounded">AI Verified Live</span>
-                            )}
-                         </div>
-                        {/* Empty block to remove the SGB specific edit button from price cell */}
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.inv)}</td>
-                  <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">₹{formatAmt(row.cur)}</td>
-                  <td className="px-6 py-5 text-right last:rounded-r-2xl">
-                    <div className="flex flex-col items-end gap-1.5">
-                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-black text-[11px] ring-1 transition-all duration-300 ${row.overallGlAbs >= 0 ? 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20 shadow-lg shadow-emerald-500/5' : 'bg-rose-500/10 text-rose-500 ring-rose-500/20 shadow-lg shadow-rose-500/5'}`}>
-                        <span className="text-[10px]">{row.overallGlAbs >= 0 ? '▲' : '▼'}</span> 
-                        <span>₹{formatAmt(Math.abs(row.overallGlAbs))}</span>
-                      </div>
-                      <div className={`inline-flex items-center gap-1.5 text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full ${row.overallGlPct > 0 ? 'text-emerald-500/80 bg-emerald-500/5' : 'text-rose-500/80 bg-rose-500/5'}`}>
-                        <TrendingUp size={8} />
-                        {row.overallGlPct > 0 ? '+' : ''}{row.overallGlPct.toFixed(2)}%
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      <div className={`flex items-center gap-1 font-bold text-[11px] ${row.dayGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                         <div className={`w-1 h-1 rounded-full ${row.dayGlAbs >= 0 ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-                         {row.dayGlAbs >= 0 ? '+' : ''}₹{formatAmt(row.dayGlAbs)}
-                      </div>
-                      <div className={`text-[10px] font-black font-mono transition-all duration-300 ${row.dayGlAbs >= 0 ? 'text-emerald-500/60' : 'text-rose-500/60'}`}>
-                        {row.dayGlPct > 0 ? '+' : ''}{row.dayGlPct.toFixed(2)}%
-                      </div>
-                    </div>
+              {apiData.length > 0 && (
+                <motion.tr layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-slate-50 dark:bg-zinc-800/50">
+                  <td colSpan={8} className="px-6 py-2 text-[9px] font-black uppercase tracking-widest text-brand border-b border-black/5 dark:border-white/5">
+                     Synched Tickers
                   </td>
                 </motion.tr>
-              ))}
+              )}
+              {apiData.map(renderRow)}
+              
+              {manualData.length > 0 && apiData.length > 0 && (
+                <motion.tr layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-slate-50 dark:bg-zinc-800/50">
+                  <td colSpan={8} className="px-6 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-black/5 dark:border-white/5">
+                     Manual Tickers
+                  </td>
+                </motion.tr>
+              )}
+              {manualData.map(renderRow)}
             </AnimatePresence>
           </tbody>
         </table>
@@ -2836,7 +2878,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     if (!user) return;
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, collName, id);
     try {
-      await setDoc(docRef, data, { merge: true });
+      const payload = { ...data };
+      if (!payload.createdAt) {
+        payload.createdAt = Date.now();
+      }
+      await setDoc(docRef, payload, { merge: true });
     } catch (error) {
       const err = handleFirestoreError(error, OperationType.WRITE, docRef.path);
       if (err) addToast("Sync Warning", "Failed to save changes to cloud. Check your connection.", "warning");
@@ -2876,11 +2922,13 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   };
 
   const handleTxnChange = (id: string, field: string, value: any) => {
-    const row = transactions.find(t => t.id === id);
-    if (!row) return;
-    const updated = { ...row, [field]: value };
-    setTransactions(prev => prev.map(t => t.id === id ? updated : t));
-    if (updated.date && (updated.deposit !== '' || updated.withdrawal !== '')) updateCloudDoc('transactions', id, updated);
+    setTransactions(prev => {
+      const row = prev.find(t => t.id === id);
+      if (!row) return prev;
+      const updated = { ...row, [field]: value };
+      if (updated.date && (updated.deposit !== '' || updated.withdrawal !== '')) updateCloudDoc('transactions', id, updated);
+      return prev.map(t => t.id === id ? updated : t);
+    });
   };
   const handleTxnDelete = (id: string) => {
     setTransactions(prev => {
@@ -2892,11 +2940,13 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     deleteCloudDoc('transactions', id);
   };
   const handleMvChange = (id: string, field: string, value: any) => {
-    const row = portfolioHistory.find(p => p.id === id);
-    if (!row) return;
-    const updated = { ...row, [field]: value };
-    setPortfolioHistory(prev => prev.map(p => p.id === id ? updated : p));
-    if (updated.date && updated.marketValue !== '') updateCloudDoc('history', id, updated);
+    setPortfolioHistory(prev => {
+      const row = prev.find(p => p.id === id);
+      if (!row) return prev;
+      const updated = { ...row, [field]: value };
+      if (updated.date && updated.marketValue !== '') updateCloudDoc('history', id, updated);
+      return prev.map(p => p.id === id ? updated : p);
+    });
   };
   const handleMvDelete = (id: string) => {
     setPortfolioHistory(prev => {
@@ -2908,11 +2958,13 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     deleteCloudDoc('history', id);
   };
   const handleBenchChange = (id: string, field: string, value: any) => {
-    const row = benchmarkHistory.find(p => p.id === id);
-    if (!row) return;
-    const updated = { ...row, [field]: value };
-    setBenchmarkHistory(prev => prev.map(p => p.id === id ? updated : p));
-    if (updated.date && updated.price !== '') updateCloudDoc('benchmark', id, updated);
+    setBenchmarkHistory(prev => {
+      const row = prev.find(p => p.id === id);
+      if (!row) return prev;
+      const updated = { ...row, [field]: value };
+      if (updated.date && updated.price !== '') updateCloudDoc('benchmark', id, updated);
+      return prev.map(p => p.id === id ? updated : p);
+    });
   };
   const handleBenchDelete = (id: string) => {
     setBenchmarkHistory(prev => {
@@ -3148,7 +3200,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const handleDownload = () => {
     const wb = XLSX.utils.book_new();
     
-    const txnData = validTxns.map(t => ({ Date: t.date, Deposit: t.deposit, Withdrawal: t.withdrawal }));
+    const txnData = validTxns.map(t => ({ Date: t.date, Particulars: t.particulars || '', Deposit: t.deposit, Withdrawal: t.withdrawal }));
     const wsTxn = XLSX.utils.json_to_sheet(txnData);
     XLSX.utils.book_append_sheet(wb, wsTxn, 'Transactions');
     
@@ -3368,27 +3420,22 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
           <div className="h-16 md:h-20 flex items-center border-b border-black/5 dark:border-white/5 md:border-none">
             <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center gap-4">
               <div className="flex items-center gap-2 md:gap-3 shrink-0">
-                <AnimatedLogo brandColor={brandColor} />
-                <button onClick={handleDownload} className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
-                  <Download size={12} className="text-blue-400" />
-                  <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tight">Export</span>
-                </button>
+                {activeTab === 'data' ? (
+                  <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 md:px-4 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-500/20 bg-emerald-500/5 shadow-sm" title="Export to Excel">
+                    <Download size={14} />
+                    <span className="hidden sm:inline">Export CSV/XLSX</span>
+                  </button>
+                ) : (
+                  <AnimatedLogo brandColor={brandColor} />
+                )}
               </div>
               <div className="flex items-center gap-2 md:gap-4 shrink-0 overflow-x-auto no-scrollbar">
-                <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-full border border-slate-200/60 dark:border-white/10 shrink-0">
+                <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-full border border-slate-200/60 dark:border-white/10 shrink-0 items-center">
                   <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Dash</button>
                   <button onClick={() => setActiveTab('integrations')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'integrations' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Integrate</button>
                   <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Data</button>
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2">
-                  <button 
-                    onClick={() => setAngelOneEnabled(!angelOneEnabled)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 md:py-2 rounded-full border text-[10px] uppercase font-bold tracking-widest transition-all shrink-0 ${angelOneEnabled ? 'bg-brand/10 border-brand/20 text-brand' : 'bg-slate-500/10 border-slate-500/20 text-slate-500'}`}
-                    title={angelOneEnabled ? "Angel One API sync is ON" : "Angel One API sync is OFF"}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${angelOneEnabled ? 'bg-brand shadow-[0_0_8px_var(--brand-color-rgb)]' : 'bg-slate-400'}`} />
-                    {angelOneEnabled ? 'A1 Connected' : 'A1 Offline'}
-                  </button>
                   <button 
                     onClick={() => setIsDarkMode(!isDarkMode)}
                     className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 transition-all shrink-0"
@@ -3559,7 +3606,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="holdings">
-                <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
+                <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} />
               </div>
 
               {angelOneEnabled && apiTrades.length > 0 && (
@@ -3665,6 +3712,8 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <AngelOneIntegration 
                     user={user} 
+                    angelOneEnabled={angelOneEnabled}
+                    setAngelOneEnabled={setAngelOneEnabled}
                     manualAssetsValue={metrics.sgbValue}
                     brokerSettings={brokerSettings}
                     saveHoldingToFirestore={async (holding: any) => {
@@ -3762,7 +3811,6 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   onPaste={(e: any) => handlePaste(e, 'benchmark', ['date', 'price'])} 
                   brandColor={brandColor} 
                   correctPin={CORRECT_PIN} 
-                  noLock={true}
                   onClearAll={clearBenchmarkHistory}
                   onClearRecent={clearRecentBenchmark}
                 />
@@ -3865,6 +3913,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showRecentConfirm, setShowRecentConfirm] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [localEdits, setLocalEdits] = useState<Record<string, Record<string, any>>>({});
 
   const handleClear = () => {
     onClearAll();
@@ -3903,6 +3952,29 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
     (row.price !== '' && row.price !== undefined)
   ));
   const activeItems = data.filter((row: any) => !!row.id && !savedItems.includes(row));
+
+  const handleLocalChange = (rowId: string, k: string, val: any) => {
+    setLocalEdits(prev => ({
+      ...prev,
+      [rowId]: {
+        ...(prev[rowId] || {}),
+        [k]: val
+      }
+    }));
+  };
+
+  const handleSaveRow = (rowId: string) => {
+    const edits = localEdits[rowId];
+    if (!edits) return;
+    Object.keys(edits).forEach(k => {
+       onEdit(rowId, k, edits[k]);
+    });
+    setLocalEdits(prev => {
+       const next = { ...prev };
+       delete next[rowId];
+       return next;
+    });
+  };
 
   const selectableItems = [...savedItems, ...activeItems].filter(item => item.id);
 
@@ -3954,7 +4026,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
   };
 
   return (
-    <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 flex flex-col shadow-2xl relative transition-all duration-300">
+    <div className={`bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 flex flex-col shadow-2xl relative transition-all duration-300 ${showDropdown ? 'z-50' : 'z-10'}`}>
       <div className="p-3 md:p-4 border-b border-black/5 dark:border-white/5 bg-muted-light/20 flex justify-between items-center uppercase text-[9px] md:text-[10px] font-black tracking-[0.2em] text-zinc-500 shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -3965,10 +4037,14 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
           <button
             disabled={selectedIds.length === 0}
             onClick={() => setIsConfirmModalOpen(true)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${selectedIds.length > 0 ? 'bg-rose-500/10 border-rose-500/20 text-rose-500 hover:bg-rose-500/20 active:scale-95 shadow-lg shadow-rose-500/10' : 'bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-zinc-500 opacity-20 cursor-not-allowed'}`}
+            className={`flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-xl border transition-all duration-300 relative overflow-hidden group ${
+              selectedIds.length > 0 
+                ? 'bg-rose-50 border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/20 text-rose-600 dark:text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/20 active:scale-95 shadow-md shadow-rose-500/5' 
+                : 'bg-black/5 dark:bg-white/5 border-transparent text-zinc-500 opacity-40 cursor-not-allowed grayscale'
+            }`}
           >
-            <Trash2 size={12} />
-            <span className="text-[8px] font-bold tracking-widest">
+            <Trash2 size={12} className={selectedIds.length > 0 ? "group-hover:scale-110 transition-transform" : ""} />
+            <span className="text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase">
               {selectedIds.length > 0 ? `DELETE (${selectedIds.length})` : 'BULK DELETE'}
             </span>
           </button>
@@ -3977,28 +4053,43 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
         <div className="relative" ref={dropdownRef}>
           <button 
             onClick={() => setShowDropdown(!showDropdown)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${isLocked ? 'bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-zinc-500' : 'bg-brand/10 border-brand/20 text-brand'}`}
+            className={`flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-xl border transition-all duration-300 relative overflow-hidden group ${
+              isLocked 
+                ? 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white shadow-sm' 
+                : 'bg-brand text-white border-brand shadow-lg shadow-brand/20 hover:shadow-brand/40 active:scale-95 hover:-translate-y-0.5'
+            }`}
           >
-            <span className="text-[8px] font-bold tracking-widest">{isLocked ? 'READ-ONLY' : 'EDIT MODE'}</span>
-            <ChevronDown size={10} className={`transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
+            {!isLocked && <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />}
+            {isLocked ? (
+              <Lock size={12} className="relative z-10 opacity-70 group-hover:scale-110 transition-transform" />
+            ) : (
+              <Edit3 size={12} className="relative z-10 opacity-90 drop-shadow-sm group-hover:scale-110 transition-transform" />
+            )}
+            <span className={`text-[9px] md:text-[10px] font-black tracking-[0.2em] relative z-10 ${!isLocked ? 'drop-shadow-sm' : ''}`}>
+              {isLocked ? 'Read Only Mode' : 'EDIT MODE'}
+            </span>
+            <ChevronDown size={12} className={`transition-transform duration-300 relative z-10 ${showDropdown ? 'rotate-180' : ''} ${!isLocked ? 'drop-shadow-sm opacity-90' : 'opacity-70'}`} />
           </button>
 
           {showDropdown && (
-            <div className="absolute right-0 mt-2 w-48 bg-surface-light dark:bg-[#111] border border-black/10 dark:border-white/10 rounded-xl shadow-2xl z-20 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute right-0 mt-2 w-48 bg-surface-light dark:bg-[#111] border border-black/10 dark:border-white/10 rounded-xl shadow-2xl z-[100] animate-in fade-in zoom-in-95 duration-150">
               <div className="p-2 space-y-1">
                 <button 
-                  onClick={handleLock}
-                  disabled={isLocked}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between transition-colors ${isLocked ? 'text-brand bg-brand/5' : 'text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                  onClick={() => { 
+                    if (isLocked) {
+                      setIsLocked(false);
+                    } else {
+                      handleLock();
+                    }
+                    setShowDropdown(false); 
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between transition-colors text-slate-700 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/5"
                 >
-                  LOCK RECORDS {isLocked && <Check size={12} />}
-                </button>
-                <button 
-                  onClick={() => { if(isLocked) setIsLocked(false); setShowDropdown(false); }}
-                  disabled={!isLocked}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between transition-colors ${!isLocked ? 'text-brand bg-brand/5' : 'text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5'}`}
-                >
-                  UNLOCK TO MODIFY {!isLocked && <ShieldCheck size={12} />}
+                  {isLocked ? (
+                    <>UNLOCK RECORDS <ShieldCheck size={12} className="text-emerald-500" /></>
+                  ) : (
+                    <>LOCK RECORDS <Lock size={12} className="text-zinc-500" /></>
+                  )}
                 </button>
                 {!isLocked && onClearRecent && (
                   <div className="border-t border-black/5 dark:border-white/5 mt-1 pt-1">
@@ -4135,26 +4226,26 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                         {k === 'date' ? (
                           <input 
                             type="date"
-                            value={row[k] || ''} 
+                            value={localEdits[row.id]?.[k] !== undefined ? localEdits[row.id][k] : (row[k] || '')} 
                             onPaste={(e) => {
                                const text = e.clipboardData.getData('Text');
                                if (text && !text.includes('\t') && !text.includes('\n')) {
                                   const parsed = parseDDMMYYYYtoISO(text);
                                   if (parsed) {
                                      e.preventDefault();
-                                     onEdit(row.id, k, parsed);
+                                     handleLocalChange(row.id, k, parsed);
                                   }
                                } else {
                                   onPaste(e);
                                }
                             }} 
-                            onChange={e => onEdit(row.id, k, e.target.value)} 
+                            onChange={e => handleLocalChange(row.id, k, e.target.value)} 
                             className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600 [color-scheme:light] dark:[color-scheme:dark]`} 
                           />
                         ) : k === 'content' ? (
                           <textarea 
-                            value={row[k] || ''} 
-                            onChange={e => onEdit(row.id, k, e.target.value)} 
+                            value={localEdits[row.id]?.[k] !== undefined ? localEdits[row.id][k] : (row[k] || '')} 
+                            onChange={e => handleLocalChange(row.id, k, e.target.value)} 
                             onPaste={onPaste} 
                             placeholder="..." 
                             className="w-full p-3 md:p-4 bg-transparent outline-none focus:bg-brand/[0.05] text-slate-900 dark:text-white transition-colors resize-none h-[48px] md:h-[56px] font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600 dark:placeholder:text-zinc-600" 
@@ -4163,20 +4254,20 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                         ) : (
                           <input 
                             type={(k === 'title' || k === 'particulars') ? 'text' : 'number'} 
-                            value={row[k] === undefined ? '' : row[k]} 
+                            value={localEdits[row.id]?.[k] !== undefined ? localEdits[row.id][k] : (row[k] === undefined ? '' : row[k])} 
                             onPaste={(e) => {
                                const text = e.clipboardData.getData('Text');
                                if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title' && k !== 'particulars') {
                                   const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
                                   if (!isNaN(parsed)) {
                                      e.preventDefault();
-                                     onEdit(row.id, k, parsed);
+                                     handleLocalChange(row.id, k, parsed);
                                   }
                                } else {
                                   onPaste(e);
                                }
                             }} 
-                            onChange={e => onEdit(row.id, k, e.target.value)} 
+                            onChange={e => handleLocalChange(row.id, k, e.target.value)} 
                             placeholder={k === 'title' || k === 'particulars' ? '...' : '0.00'} 
                             className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
                           />
@@ -4186,11 +4277,11 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                   })}
                   <td className="p-0 text-center border-l border-black/5 dark:border-white/5 w-12 md:w-14">
                     <button 
-                      onClick={() => onDelete(row.id)} 
-                      className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"
-                      title="Delete row"
+                      onClick={() => handleSaveRow(row.id)} 
+                      className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-emerald-500 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 flex items-center justify-center"
+                      title="Save row"
                     >
-                      <Trash2 size={16}/>
+                      <Save size={16}/>
                     </button>
                   </td>
                 </tr>
@@ -4275,11 +4366,11 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                               />
                             ) : (
                               <input 
-                                type={k === 'title' ? 'text' : 'number'} 
+                                type={(k === 'title' || k === 'particulars') ? 'text' : 'number'} 
                                 value={row[k] === undefined ? '' : row[k]} 
                                 onPaste={(e) => {
                                    const text = e.clipboardData.getData('Text');
-                                   if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title') {
+                                   if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title' && k !== 'particulars') {
                                       const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
                                       if (!isNaN(parsed)) {
                                          e.preventDefault();
