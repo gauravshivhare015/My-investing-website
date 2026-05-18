@@ -1264,22 +1264,6 @@ const AngelOneIntegration = ({ user, brokerSettings, saveHoldingToFirestore, sav
               })}
             </div>
 
-            <div className="pt-3 border-t border-slate-200 dark:border-white/5 space-y-2">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400">
-                Manual TOTP (Optional)
-              </label>
-              <input 
-                type="text" 
-                value={manualTotp}
-                onChange={(e) => setManualTotp(e.target.value)}
-                placeholder="Enter 6-digit TOTP code"
-                className="w-full bg-white dark:bg-[#0d0d0d] border border-slate-200/60 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/10 focus:border-brand/30 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600 font-mono tracking-widest"
-              />
-              <p className="text-[9px] text-slate-500 dark:text-zinc-400 leading-relaxed font-medium">
-                If automatic generation fails, enter the 6-digit code from your authenticator app here.
-              </p>
-            </div>
-
             <div className="pt-2 border-t border-slate-900/5 dark:border-white/5">
               <details className="group">
                 <summary className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 cursor-pointer hover:text-brand transition-colors flex items-center gap-2 list-none">
@@ -2521,6 +2505,18 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   });
   const [showThemePicker, setShowThemePicker] = useState(false);
 
+  const [angelOneEnabled, setAngelOneEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('angelOneEnabled');
+      if (saved) return saved === 'true';
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('angelOneEnabled', angelOneEnabled.toString());
+  }, [angelOneEnabled]);
+
   useEffect(() => {
     document.documentElement.style.setProperty('--brand-color-rgb', hexToRgb(brandColor));
     localStorage.setItem('brandColor', brandColor);
@@ -3044,8 +3040,8 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     }
   };
 
-  const validTxns = useMemo(() => transactions.filter(t => t.date && (t.deposit !== '' || t.withdrawal !== '')).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [transactions]);
-  const validHistory = useMemo(() => portfolioHistory.filter(p => p.date && p.marketValue !== '').sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [portfolioHistory]);
+  const validTxns = useMemo(() => transactions.filter(t => t.date && (t.deposit !== '' || t.withdrawal !== '') && (angelOneEnabled || !t.id?.startsWith('api_'))).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [transactions, angelOneEnabled]);
+  const validHistory = useMemo(() => portfolioHistory.filter(p => p.date && p.marketValue !== '' && (angelOneEnabled || !p.id?.startsWith('api_'))).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [portfolioHistory, angelOneEnabled]);
   const validBench = useMemo(() => {
     return benchmarkHistory
       .filter(b => b.date && (b.price !== '' && b.price !== null))
@@ -3082,10 +3078,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   };
 
   const metrics = useMemo(() => {
-    const apiMV = apiSummary?.totalholdingvalue ? Number(apiSummary.totalholdingvalue) : 0;
+    const apiMV = (angelOneEnabled && apiSummary?.totalholdingvalue) ? Number(apiSummary.totalholdingvalue) : 0;
     
     // Categorized calculation for live value from ALL holdings (synced or manual)
-    const holdingsDetail = holdings.reduce((acc, h: any) => {
+    const validHoldingsDetail = angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken);
+    const holdingsDetail = validHoldingsDetail.reduce((acc, h: any) => {
       const val = (Number(h.qty) || 0) * (Number(h.ltp) || 0);
       const cleanedVal = isNaN(val) ? 0 : val;
       const type = (h.type || '').toUpperCase();
@@ -3107,7 +3104,8 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const liveMV = explicitMV > 0 ? explicitMV : apiMV;
     
     const histMV = validHistory.length > 0 ? Number(validHistory[validHistory.length - 1].marketValue) : 0;
-    const curMV = (liveMV > 0) ? liveMV : histMV;
+    const isLive = angelOneEnabled && liveMV > 0;
+    const curMV = isLive ? liveMV : histMV;
 
     let net = 0; validTxns.forEach(t => net += (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0));
     let avgY = 0; if (validTxns.length > 0) { const years = Math.max(0.1, (new Date().getTime() - new Date(validTxns[0].date).getTime()) / (1000*60*60*24*365.25)); avgY = net / years; }
@@ -3153,6 +3151,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
     return { 
       currentMV: curMV, 
+      isLive,
       breakdown: {
         stocks: holdingsDetail.stocks,
         mf: holdingsDetail.mf,
@@ -3174,7 +3173,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       f10: fv(curMV, projectionRate, 10, avgY),
       f20: fv(curMV, projectionRate, 20, avgY)
     };
-  }, [validTxns, validHistory, benchmarkHistory, holdings, apiSummary]);
+  }, [validTxns, validHistory, benchmarkHistory, holdings, apiSummary, angelOneEnabled]);
 
   const chartData = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -3297,6 +3296,14 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2">
                   <button 
+                    onClick={() => setAngelOneEnabled(!angelOneEnabled)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 md:py-2 rounded-full border text-[10px] uppercase font-bold tracking-widest transition-all shrink-0 ${angelOneEnabled ? 'bg-brand/10 border-brand/20 text-brand' : 'bg-slate-500/10 border-slate-500/20 text-slate-500'}`}
+                    title={angelOneEnabled ? "Angel One API sync is ON" : "Angel One API sync is OFF"}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${angelOneEnabled ? 'bg-brand shadow-[0_0_8px_var(--brand-color-rgb)]' : 'bg-slate-400'}`} />
+                    {angelOneEnabled ? 'A1 Connected' : 'A1 Offline'}
+                  </button>
+                  <button 
                     onClick={() => setIsDarkMode(!isDarkMode)}
                     className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 transition-all shrink-0"
                     aria-label="Toggle theme"
@@ -3346,6 +3353,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   delay={0.1}
                   highlightColor="brand"
                   subtext={
+                    metrics.isLive ? (
                     <div className="flex flex-col gap-1 mt-1">
                       <div className="flex justify-between items-center text-[10px] uppercase tracking-wider font-bold">
                         <span className="opacity-60">Stocks:</span>
@@ -3362,6 +3370,13 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                         </div>
                       )}
                     </div>
+                    ) : (
+                      <div className="flex flex-col gap-1 mt-1">
+                        <div className="flex justify-start items-center text-[10px] uppercase tracking-wider font-bold text-zinc-500 dark:text-zinc-400">
+                          Offline Snapshot
+                        </div>
+                      </div>
+                    )
                   }
                   className="bg-gradient-to-br from-brand/10 to-brand/5 border-brand/30 dark:bg-gradient-to-br dark:from-brand/20 dark:to-transparent dark:border-brand/40 shadow-[0_20px_40px_-15px_rgba(var(--brand-color-rgb),0.3)]"
                 />
@@ -3458,12 +3473,10 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="holdings">
-                <HoldingsTable user={user} holdings={holdings} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
+                <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} />
               </div>
 
-
-
-              {apiTrades.length > 0 && (
+              {angelOneEnabled && apiTrades.length > 0 && (
                 <div id="api-trades" className="space-y-6">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-brand/10 rounded-lg text-brand"><Activity size={20} /></div>
