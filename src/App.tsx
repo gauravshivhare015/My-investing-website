@@ -1442,13 +1442,21 @@ const BrokerCredentialsModal = ({ isOpen, onClose, brokerId, user, currentSettin
   );
 };
 
-const SgbPriceEditModal = ({ isOpen, onClose, onSave, holding }: { isOpen: boolean, onClose: () => void, onSave: (h: any) => void, holding: any }) => {
+const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOpen: boolean, onClose: () => void, onSave: (h: any) => void, onDelete: (h: any) => void, holding: any }) => {
   const [newPrice, setNewPrice] = useState('');
+  const [newQty, setNewQty] = useState('');
+  const [newAvg, setNewAvg] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   useEffect(() => {
-    if (holding) setNewPrice(holding.ltp.toString());
+    if (holding) {
+      setNewPrice(holding.ltp.toString());
+      setNewQty(holding.qty.toString());
+      setNewAvg(holding.avg.toString());
+      setShowDeleteConfirm(false);
+    }
   }, [holding]);
 
   const handleAiSuggestion = async () => {
@@ -1458,7 +1466,7 @@ const SgbPriceEditModal = ({ isOpen, onClose, onSave, holding }: { isOpen: boole
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Identify the absolute latest market price (LTP) for Indian Sovereign Gold Bond: ${holding.name}. Return ONLY the number. No other text. If not found, estimate based on 24k gold price.`,
+        contents: `Identify the absolute latest market price (LTP) for Indian Sovereign Gold Bond/Stock: ${holding.name}. Return ONLY the number. No other text. If not found, estimate based on 24k gold price or recent stock price.`,
         config: { tools: [{ googleSearch: {} }] }
       });
       const text = response.text.trim();
@@ -1476,7 +1484,15 @@ const SgbPriceEditModal = ({ isOpen, onClose, onSave, holding }: { isOpen: boole
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPrice || isNaN(Number(newPrice))) return;
-    onSave({ ...holding, ltp: Number(newPrice), isAiVerified: isAiLoading });
+    if (!newQty || isNaN(Number(newQty))) return;
+    if (!newAvg || isNaN(Number(newAvg))) return;
+    onSave({ 
+      ...holding, 
+      ltp: Number(newPrice), 
+      qty: Number(newQty),
+      avg: Number(newAvg),
+      isAiVerified: isAiLoading 
+    });
     onClose();
   };
 
@@ -1501,12 +1517,42 @@ const SgbPriceEditModal = ({ isOpen, onClose, onSave, holding }: { isOpen: boole
                   <Activity size={24} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Correct Price</h3>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Edit Holding</h3>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{holding?.name}</p>
                 </div>
               </div>
               
               <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-2">Units</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={newQty}
+                      onChange={(e) => setNewQty(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl px-5 py-4 text-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/50 transition-all font-mono font-bold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-2">Cost Price</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        value={newAvg}
+                        onChange={(e) => setNewAvg(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl pl-8 pr-4 py-4 text-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/50 transition-all font-mono font-bold"
+                        required
+                      />
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        <div className="text-zinc-400 font-mono text-sm">₹</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-2">Market Price (LTP)</label>
                   <div className="relative">
@@ -1515,11 +1561,13 @@ const SgbPriceEditModal = ({ isOpen, onClose, onSave, holding }: { isOpen: boole
                       step="any"
                       value={newPrice}
                       onChange={(e) => setNewPrice(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl px-5 py-4 text-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/50 transition-all font-mono font-bold"
-                      autoFocus
+                      className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 rounded-2xl pl-8 pr-14 py-4 text-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/50 transition-all font-mono font-bold"
+                      required
                     />
-                    <div className="absolute right-14 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
                       <div className="text-zinc-400 font-mono text-sm">₹</div>
+                    </div>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
                       <button
                         type="button"
                         onClick={handleAiSuggestion}
@@ -1538,19 +1586,51 @@ const SgbPriceEditModal = ({ isOpen, onClose, onSave, holding }: { isOpen: boole
                 </div>
 
                 <div className="flex gap-4 pt-4">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-brand text-white shadow-xl shadow-brand/20 hover:scale-105 active:scale-95 transition-all"
-                  >
-                    Save Changes
-                  </button>
+                  {showDeleteConfirm ? (
+                    <div className="flex-1 flex gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                           onDelete(holding);
+                           onClose();
+                        }}
+                        className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-white bg-rose-500 shadow-xl shadow-rose-500/20 hover:scale-105 active:scale-95 transition-all"
+                      >
+                        Confirm Delete
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="flex-shrink-0 px-4 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-rose-500 bg-rose-500/10 hover:bg-rose-500 hover:text-white transition-colors"
+                        title="Delete Holding"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-brand text-white shadow-xl shadow-brand/20 hover:scale-105 active:scale-95 transition-all"
+                      >
+                        Save
+                      </button>
+                    </>
+                  )}
                 </div>
               </form>
             </div>
@@ -1766,19 +1846,36 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [editingSgb, setEditingSgb] = useState<any>(null);
+  const [editingHolding, setEditingHolding] = useState<any>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /* 
   useEffect(() => {
-    const checkScheduledRefresh = async () => {
-      if (holdings.length === 0 || isRefreshingPrices) return;
-      // ... logic for auto refresh ...
+    if (holdings.length === 0) return;
+
+    let timeoutId: any;
+    
+    const scheduleNextRefresh = () => {
+      const now = new Date();
+      const nextRun = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 15, 30, 0, 0);
+      
+      // If 3:30 PM has passed today, schedule for tomorrow
+      if (now.getTime() >= nextRun.getTime()) {
+        nextRun.setDate(now.getDate() + 1);
+      }
+      
+      const timeToWait = nextRun.getTime() - now.getTime();
+      
+      timeoutId = setTimeout(() => {
+        refreshPrices();
+        scheduleNextRefresh();
+      }, timeToWait);
     };
-    checkScheduledRefresh();
-  }, [holdings.length]); 
-  */
+
+    scheduleNextRefresh();
+
+    return () => clearTimeout(timeoutId);
+  }, [holdings.length]);
 
   const resolveSgbToken = async (sgb: any) => {
     try {
@@ -2226,10 +2323,10 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
 
            <button 
              onClick={() => setIsManualModalOpen(true)}
-             className="px-6 py-3 text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 active:scale-95 transition-all flex items-center gap-3 border border-amber-500/20 shadow-lg shadow-amber-500/5 group"
+             className="px-6 py-3 text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-600 text-white hover:from-amber-400 hover:to-yellow-500 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-amber-500/20 hover:shadow-amber-500/40 group border-b-2 border-amber-700/50"
            >
-              <Coins size={14} className="group-hover:scale-110 transition-transform" />
-              <span className="hidden sm:inline">Add SGB</span>
+              <Coins size={14} className="group-hover:scale-110 transition-transform drop-shadow-md" />
+              <span className="hidden sm:inline drop-shadow-sm">Add SGB</span>
            </button>
 
            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
@@ -2345,16 +2442,21 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
                   }}
                   className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-all duration-300 ring-1 hover:ring-brand/30 rounded-2xl overflow-hidden`}
                 >
-                  <td className="px-6 py-5 first:rounded-l-2xl group/td-name">
+                  <td className="px-6 py-5 first:rounded-l-2xl group/td-name relative">
+                    {row.type === 'SGB' && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-amber-500/[0.02] to-transparent pointer-events-none rounded-l-2xl" />
+                    )}
                     <div className="flex items-center gap-3 font-bold text-slate-900 dark:text-white font-sans group/ticker relative">
-                      <div className={`w-9 h-9 rounded-xl ${row.type === 'SGB' ? 'bg-amber-500/15 text-amber-500 border-amber-500/30' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-[10px] font-black shadow-sm border transition-all duration-500 group-hover/ticker:scale-110 group-hover/ticker:shadow-lg`}>
-                        {row.type === 'SGB' ? <Coins size={16} /> : row.name.substring(0, 2).toUpperCase()}
+                      <div className={`w-9 h-9 rounded-xl ${row.type === 'SGB' ? 'bg-gradient-to-br from-amber-400/20 to-yellow-600/10 text-amber-600 dark:text-amber-400 border-amber-500/30' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-[10px] font-black shadow-sm border transition-all duration-500 group-hover/ticker:scale-110 group-hover/ticker:shadow-lg`}>
+                        {row.type === 'SGB' ? <Coins size={16} className="drop-shadow-sm" /> : row.name.substring(0, 2).toUpperCase()}
                       </div>
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs tracking-tight uppercase">{row.name}</span>
+                          <span className={`text-xs tracking-tight uppercase ${row.type === 'SGB' ? 'text-amber-700 dark:text-amber-300' : ''}`}>{row.name}</span>
                           {row.type === 'SGB' && (
-                            <span className="text-[7px] font-black tracking-widest uppercase bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-full ring-1 ring-amber-500/20">Sovereign Gold</span>
+                            <span className="text-[7px] font-black tracking-[0.15em] uppercase bg-gradient-to-r from-amber-500/10 to-transparent text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+                              Sovereign Gold
+                            </span>
                           )}
                           {row.type === 'SGB' && row.isAiVerified && (
                             <span className="text-[7px] font-black tracking-widest uppercase bg-brand/10 text-brand px-1.5 py-0.5 rounded-full ring-1 ring-brand/20 flex items-center gap-1 shadow-sm">
@@ -2362,17 +2464,17 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
                             </span>
                           )}
                         </div>
-                        <div 
-                          className="flex items-center gap-1 opacity-0 group-hover/ticker:opacity-100 transition-all cursor-pointer hover:text-rose-600 active:scale-95 mt-0.5"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`Are you sure you want to remove ${row.name}?`)) {
-                              handleDeleteHolding(row);
-                            }
-                          }}
-                        >
-                          <Trash2 size={10} className="text-rose-500" />
-                          <span className="text-[8px] text-rose-500 font-black tracking-widest uppercase border-b border-rose-500/20">Terminate</span>
+                        <div className="flex items-center gap-3 opacity-0 group-hover/ticker:opacity-100 transition-all mt-0.5">
+                          <div 
+                            className="flex items-center gap-1 cursor-pointer hover:text-brand active:scale-95 transition-all text-zinc-500"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingHolding(row);
+                            }}
+                          >
+                            <Edit3 size={10} className="text-current" />
+                            <span className="text-[8px] font-black tracking-widest uppercase border-b border-current/20">Manage</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2381,13 +2483,12 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.avg)}</td>
                   <td className="px-6 py-5 text-right font-mono text-[12px] text-slate-900 dark:text-white font-bold group/price">
                       <div 
-                        className={`flex items-center justify-end gap-3 p-2 -m-2 rounded-xl transition-all duration-500 ${row.type === 'SGB' ? 'cursor-pointer hover:bg-amber-500/10 hover:text-amber-500 shadow-xl shadow-amber-500/0 hover:shadow-amber-500/5' : ''}`}
-                        onClick={() => row.type === 'SGB' && setEditingSgb(row)}
+                        className="flex items-center justify-end gap-3 p-2 -m-2 rounded-xl transition-all duration-500"
                       >
                          <div className="flex flex-col items-end">
                             <div className="flex items-center gap-2">
                                <span 
-                                 className={`${row.type === 'SGB' ? 'border-b-2 border-dotted border-amber-500/40 pb-0.5' : ''} transition-all duration-300 group-hover/price:scale-110 origin-right`}
+                                 className="transition-all duration-300 group-hover/price:scale-110 origin-right"
                                >₹{formatAmt(row.ltp)}</span>
                                {row.isAiVerified && (
                                  <motion.div
@@ -2415,14 +2516,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
                               <span className="text-[6px] font-black text-brand uppercase tracking-[0.25em] mt-0.5 opacity-80 bg-brand/5 px-1 rounded">AI Verified Live</span>
                             )}
                          </div>
-                       {row.type === 'SGB' && (
-                         <div 
-                           className="w-7 h-7 flex items-center justify-center bg-amber-500/10 text-amber-500 rounded-lg group-hover/price:bg-amber-500 group-hover/price:text-white transition-all duration-300 shadow-sm"
-                           title="Manual Correction"
-                         >
-                           <Edit3 size={10} />
-                         </div>
-                       )}
+                        {/* Empty block to remove the SGB specific edit button from price cell */}
                     </div>
                   </td>
                   <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.inv)}</td>
@@ -2448,15 +2542,6 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
                       <div className={`text-[10px] font-black font-mono transition-all duration-300 ${row.dayGlAbs >= 0 ? 'text-emerald-500/60' : 'text-rose-500/60'}`}>
                         {row.dayGlPct > 0 ? '+' : ''}{row.dayGlPct.toFixed(2)}%
                       </div>
-                      {/* Magnitude Indicator */}
-                      <div className="w-16 h-1 bg-zinc-100 dark:bg-zinc-800 rounded-full mt-1 overflow-hidden relative">
-                         <motion.div 
-                           initial={{ width: 0 }}
-                           animate={{ width: `${Math.min(Math.abs(row.dayGlPct) * 10, 100)}%` }}
-                           className={`h-full absolute top-0 ${row.dayGlAbs >= 0 ? 'bg-emerald-500/40 right-1/2 rounded-l-full' : 'bg-rose-500/40 left-1/2 rounded-r-full'} transform ${row.dayGlAbs >= 0 ? '-translate-x-0' : ''}`}
-                         />
-                         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1px] h-full bg-zinc-300 dark:bg-zinc-700 z-10" />
-                      </div>
                     </div>
                   </td>
                 </motion.tr>
@@ -2471,11 +2556,12 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding }: { user: an
         onSave={onSaveHolding}
         brandColor={brandColor}
       />
-      <SgbPriceEditModal
-        isOpen={!!editingSgb}
-        onClose={() => setEditingSgb(null)}
+      <HoldingEditModal
+        isOpen={!!editingHolding}
+        onClose={() => setEditingHolding(null)}
         onSave={onSaveHolding}
-        holding={editingSgb}
+        onDelete={handleDeleteHolding}
+        holding={editingHolding}
       />
     </div>
   );
