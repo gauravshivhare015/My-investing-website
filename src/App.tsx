@@ -102,7 +102,6 @@ const fetchJson = async (url: string, options?: RequestInit) => {
 
 // --- AI Imports ---
 import gsap from 'gsap';
-import { GoogleGenAI, Type } from "@google/genai";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -1473,13 +1472,18 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
     if (!holding) return;
     setIsAiLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Identify the absolute latest market price (LTP) for Indian Sovereign Gold Bond/Stock: ${holding.name}. Return ONLY the number. No other text. If not found, estimate based on 24k gold price or recent stock price.`,
-        config: { tools: [{ googleSearch: {} }] }
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3-flash-preview",
+          contents: `Identify the absolute latest market price (LTP) for Indian Sovereign Gold Bond/Stock: ${holding.name}. Return ONLY the number. No other text. If not found, estimate based on 24k gold price or recent stock price.`,
+          config: { tools: [{ googleSearch: {} }] }
+        })
       });
-      const text = response.text.trim();
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      const text = data.text.trim();
       const match = text.match(/\d+(\.\d+)?/);
       if (match) {
         setNewPrice(match[0]);
@@ -1762,13 +1766,18 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
                         if (!name) return;
                         setIsSearching(true);
                         try {
-                          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-                          const response = await ai.models.generateContent({
-                            model: "gemini-3-flash-preview",
-                            contents: `Find the absolute latest market price for SGB titled: ${name}. Only return the numeric price.`,
-                            config: { tools: [{ googleSearch: {} }] }
+                          const response = await fetch('/api/gemini/generate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              model: "gemini-3-flash-preview",
+                              contents: `Find the absolute latest market price for SGB titled: ${name}. Only return the numeric price.`,
+                              config: { tools: [{ googleSearch: {} }] }
+                            })
                           });
-                          const match = response.text.match(/\d+(\.\d+)?/);
+                          const data = await response.json();
+                          if (!response.ok) throw new Error(data.error);
+                          const match = data.text.match(/\d+(\.\d+)?/);
                           if (match) setLtp(match[0]);
                         } catch(e) {} finally { setIsSearching(false); }
                       }}
@@ -1860,7 +1869,7 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
   );
 };
 
-const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, showManualTickers, setShowManualTickers }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void }) => {
+const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, showManualTickers, setShowManualTickers, setAngelOneEnabled }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void, setAngelOneEnabled?: (v: boolean) => void }) => {
   const { addToast } = useToasts();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
@@ -1939,41 +1948,41 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
 
   const getSgbIntelligenceWithGemini = async (sgbs: any[]) => {
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        console.warn("GEMINI_API_KEY is missing from environment variables.");
-        return null;
-      }
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
       const sgbNames = sgbs.map(s => s.name).join(', ');
       addToast("AI Intelligence", "Consulting Gemini for SGB market estimates...", "info");
       
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Identify the absolute latest market Last Traded Price (LTP) from today's real-time trading for THESE Indian Sovereign Gold Bonds (SGBs): ${sgbNames}. 
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3-flash-preview",
+          contents: `Identify the absolute latest market Last Traded Price (LTP) from today's real-time trading for THESE Indian Sovereign Gold Bonds (SGBs): ${sgbNames}. 
            Search Google for the most recent NSE/BSE gold bond prices. 
            Return a JSON array of objects with 'name' and 'ltp'. 
            Include the 'name' EXACTLY as provided in input.
            If the bond has low liquidity today, estimate the price based on the current market 24k gold price per gram.`,
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                ltp: { type: Type.NUMBER }
-              },
-              required: ["name", "ltp"]
+          config: {
+            tools: [{ googleSearch: {} }],
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  name: { type: "STRING" },
+                  ltp: { type: "NUMBER" }
+                },
+                required: ["name", "ltp"]
+              }
             }
           }
-        },
+        })
       });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
 
       try {
-        const text = response.text.trim();
+        const text = data.text.trim();
         return JSON.parse(text);
       } catch (e) {
         console.error("Failed to parse Gemini SGB intelligence", e);
@@ -2093,42 +2102,21 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
 
   const processImageWithGemini = async (base64Data: string, mimeType: string) => {
     setIsProcessing(true);
-    addToast("AI Analysis", "Gemini is extracting data from your upload...", "info");
+    addToast("AI Analysis", "secure backend is extracting data from your upload...", "info");
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is missing from environment variables.");
-      }
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-            {
-               inlineData: { data: base64Data.split(',')[1] || base64Data, mimeType }
-            },
-            "Extract the stock and Sovereign Gold Bond (SGB) holdings from this image or text. For each holding, extract: name (SGB name like SGBNOV28 or Stock symbol), quantity, average price, last traded price (LTP), and previous close. Also identify the 'type' (EQUITY or SGB)."
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING, description: "Stock symbol or SGB name (e.g. SGBMAY29)" },
-                qty: { type: Type.NUMBER, description: "Quantity of units/shares" },
-                avg: { type: Type.NUMBER, description: "Average acquisition price" },
-                ltp: { type: Type.NUMBER, description: "Last traded/current market price" },
-                pClose: { type: Type.NUMBER, description: "Previous close price" },
-                type: { type: Type.STRING, enum: ["EQUITY", "SGB", "MUTUAL_FUND"], description: "Type of asset" }
-              },
-              required: ["name", "qty", "avg", "ltp", "pClose", "type"]
-            }
-          }
-        }
+      const response = await fetch('/api/extract-holdings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64Data, mimeType })
       });
-      const jsonStr = response.text;
-      if (jsonStr) {
-          const newHoldings = JSON.parse(jsonStr);
+      
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to extract holdings data via AI");
+      }
+      
+      if (result.status === "success" && result.data) {
+          const newHoldings = result.data;
           if (newHoldings.length > 0) {
              addToast("Resolving Assets", "AI extracted data. Now resolving market identifiers...", "info");
              const processedHoldings = [];
@@ -2433,6 +2421,17 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
         </div>
 
         <div className="flex flex-wrap items-center gap-3 md:gap-4 lg:gap-5 justify-end">
+           {setAngelOneEnabled && (
+             <button 
+               onClick={() => setAngelOneEnabled(!isApiMode)}
+               className={`flex items-center gap-1.5 px-4 py-2.5 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl border transition-all shrink-0 cursor-pointer ${isApiMode ? 'bg-brand/10 border-brand/20 text-brand hover:bg-brand/20' : 'bg-slate-500/10 border-slate-500/20 text-slate-500 hover:bg-slate-500/20'}`}
+               title={isApiMode ? "Angel One API sync is ON" : "Angel One API sync is OFF"}
+             >
+               <span className={`w-1.5 h-1.5 rounded-full ${isApiMode ? 'bg-brand shadow-[0_0_8px_var(--brand-color-rgb)] animate-pulse' : 'bg-slate-400'}`} />
+               {isApiMode ? 'A1 Connected' : 'A1 Offline'}
+             </button>
+           )}
+
            <button 
              onClick={refreshPrices}
              disabled={isRefreshingPrices || holdings.length === 0}
@@ -3634,6 +3633,18 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                     </h3>
                     <p className="text-[8px] md:text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Net Portfolio vs Manual Benchmark</p>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setAngelOneEnabled(!angelOneEnabled)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 md:py-2 rounded-full border text-[10px] uppercase font-bold tracking-widest transition-all shrink-0 cursor-pointer ${angelOneEnabled ? 'bg-brand/10 border-brand/20 text-brand hover:bg-brand/20' : 'bg-slate-500/10 border-slate-500/20 text-slate-500 hover:bg-slate-500/20'}`}
+                        title={angelOneEnabled ? "Angel One API sync is ON" : "Angel One API sync is OFF"}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${angelOneEnabled ? 'bg-brand shadow-[0_0_8px_var(--brand-color-rgb)] animate-pulse' : 'bg-slate-400'}`} />
+                        {angelOneEnabled ? 'A1 Connected' : 'A1 Offline'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div className="h-[250px] md:h-[400px] w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
@@ -3656,7 +3667,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="holdings">
-                <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} />
+                <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} setAngelOneEnabled={setAngelOneEnabled} />
               </div>
 
               {angelOneEnabled && apiTrades.length > 0 && (

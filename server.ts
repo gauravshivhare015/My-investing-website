@@ -454,6 +454,100 @@ async function startServer() {
       }
     }
   });
+
+  // API Route for generic Gemini generation
+  app.post("/api/gemini/generate", async (req, res) => {
+    try {
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+      }
+      
+      const { model = "gemini-3-flash-preview", contents, config } = req.body;
+      if (!contents) {
+        return res.status(400).json({ error: "Missing contents" });
+      }
+
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      // Process inlineData inside contents to ensure type matching
+      // If we passed base64Data via inlineData, it might be string, but SDK requires specific interface
+      // However we're passing it straight through, so if client formatted it correctly, it should work.
+
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: config || {}
+      });
+
+      res.json({ status: "success", text: response.text });
+    } catch (e: any) {
+      console.error("Gemini Gen API Error:", e);
+      res.status(500).json({ error: e.message || "Failed to generate AI content" });
+    }
+  });
+
+  // API Route for Gemini AI import
+  app.post("/api/extract-holdings", async (req, res) => {
+    try {
+      const { base64Data, mimeType } = req.body;
+      
+      if (!base64Data || !mimeType) {
+        return res.status(400).json({ error: "Missing base64Data or mimeType" });
+      }
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+      }
+
+      const { GoogleGenAI, Type } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      let inlineData = base64Data;
+      if (typeof base64Data === 'string' && base64Data.includes(',')) {
+        inlineData = base64Data.split(',')[1];
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+            {
+               inlineData: { data: inlineData, mimeType }
+            },
+            "Extract the stock and Sovereign Gold Bond (SGB) holdings from this image or text. For each holding, extract: name (SGB name like SGBNOV28 or Stock symbol), quantity, average price, last traded price (LTP), and previous close. Also identify the 'type' (EQUITY or SGB)."
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING, description: "Stock symbol or SGB name (e.g. SGBMAY29)" },
+                qty: { type: Type.NUMBER, description: "Quantity of units/shares" },
+                avg: { type: Type.NUMBER, description: "Average acquisition price" },
+                ltp: { type: Type.NUMBER, description: "Last traded/current market price" },
+                pClose: { type: Type.NUMBER, description: "Previous close price" },
+                type: { type: Type.STRING, enum: ["EQUITY", "SGB", "MUTUAL_FUND"], description: "Type of asset" }
+              },
+              required: ["name", "qty", "avg", "ltp", "pClose", "type"]
+            }
+          }
+        }
+      });
+      
+      const jsonStr = response.text;
+      if (!jsonStr) {
+        return res.status(500).json({ error: "AI returned empty response" });
+      }
+      
+      const parsedData = JSON.parse(jsonStr);
+      res.json({ status: "success", data: parsedData });
+    } catch (e: any) {
+      console.error("AI Extractor Error:", e);
+      res.status(500).json({ error: e.message || "Failed to extract data via AI" });
+    }
+  });
   
   // API Route for Market Data
   app.post("/api/market/data", async (req, res, next) => {
