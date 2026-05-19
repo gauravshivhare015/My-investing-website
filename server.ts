@@ -455,6 +455,38 @@ async function startServer() {
     }
   });
 
+  // Helper to clean and parse JSON strings returned by LLMs
+  const cleanAndParseJson = (text: string): any => {
+    let cleaned = text.trim();
+    
+    // 1. Strip markdown format blocks like ```json ... ``` or ``` ... ```
+    if (cleaned.includes("```")) {
+      const match = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (match && match[1]) {
+        cleaned = match[1].trim();
+      }
+    }
+    
+    // 2. Fallbacks to find JSON array or object if there is still surrounding junk
+    if (!cleaned.startsWith('[') && !cleaned.startsWith('{')) {
+      const arrayStart = cleaned.indexOf('[');
+      const objectStart = cleaned.indexOf('{');
+      if (arrayStart !== -1 && (objectStart === -1 || arrayStart < objectStart)) {
+        const lastBracket = cleaned.lastIndexOf(']');
+        if (lastBracket !== -1) {
+          cleaned = cleaned.substring(arrayStart, lastBracket + 1);
+        }
+      } else if (objectStart !== -1) {
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (lastBrace !== -1) {
+          cleaned = cleaned.substring(objectStart, lastBrace + 1);
+        }
+      }
+    }
+
+    return JSON.parse(cleaned);
+  };
+
   // API Route for generic Gemini generation
   app.post("/api/gemini/generate", async (req, res) => {
     try {
@@ -543,7 +575,7 @@ async function startServer() {
         return res.status(500).json({ error: "AI returned empty response" });
       }
       
-      const parsedData = JSON.parse(jsonStr);
+      const parsedData = cleanAndParseJson(jsonStr);
       res.json({ status: "success", data: parsedData });
     } catch (e: any) {
       console.error("AI Extractor Error:", e);

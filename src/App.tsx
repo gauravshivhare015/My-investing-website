@@ -1869,6 +1869,199 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
   );
 };
 
+const ThemeCustomizerModal = ({ isOpen, onClose, brandColor, setBrandColor }: { isOpen: boolean, onClose: () => void, brandColor: string, setBrandColor: (c: string) => void }) => {
+  const hexToDecimalRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 99, g: 102, b: 241 };
+  };
+
+  const decimalToHex = (r: number, g: number, b: number) => {
+    const toHexVal = (c: number) => {
+      const hex = Math.max(0, Math.min(255, c)).toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    };
+    return `#${toHexVal(r)}${toHexVal(g)}${toHexVal(b)}`;
+  };
+
+  const rgbVals = useMemo(() => hexToDecimalRgb(brandColor), [brandColor]);
+
+  const handleSliderChange = (channel: 'r' | 'g' | 'b', val: number) => {
+    const nextRgb = { ...rgbVals, [channel]: val };
+    const nextHex = decimalToHex(nextRgb.r, nextRgb.g, nextRgb.b);
+    setBrandColor(nextHex);
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+            className="bg-white dark:bg-[#0d0d0d] rounded-3xl border border-black/10 dark:border-white/10 w-full max-w-lg overflow-hidden shadow-2xl relative"
+          >
+            <div className="p-6 md:p-8">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-brand/10 rounded-xl text-brand">
+                    <Palette size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Theme Customizer</h3>
+                    <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider mt-0.5">Personalize your workspace look</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={onClose}
+                  className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors font-bold text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Predefined Themes Grid */}
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-3">Predefined Brand Tones</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {PREDEFINED_THEMES.map((theme) => {
+                      const isSelected = brandColor.toLowerCase() === theme.color.toLowerCase();
+                      return (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          onClick={() => setBrandColor(theme.color)}
+                          className={`flex items-center gap-2.5 p-3 rounded-2xl border text-left cursor-pointer transition-all duration-300 ${isSelected ? 'border-brand bg-brand/5 shadow-inner scale-[1.02]' : 'border-black/5 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] hover:bg-slate-50 dark:hover:bg-white/[0.05]'}`}
+                        >
+                          <span 
+                            className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center shadow-md relative"
+                            style={{ backgroundColor: theme.color }}
+                          >
+                            {isSelected && <Check size={10} className="text-white drop-shadow-md" />}
+                          </span>
+                          <span className="text-xs font-black tracking-wide text-slate-800 dark:text-zinc-200">{theme.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="h-px bg-black/5 dark:bg-white/5" />
+
+                {/* Custom Fine-Tuning controls */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-[10px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em]">Custom Master Tint</label>
+                    <span className="text-xs font-mono font-bold text-brand bg-brand/10 px-2 py-0.5 rounded-full">{brandColor.toUpperCase()}</span>
+                  </div>
+
+                  <div className="flex items-center gap-4 bg-slate-50 dark:bg-white/[0.02] p-4 rounded-2xl border border-black/5 dark:border-white/5">
+                    {/* Interactive Masked Color picker button */}
+                    <div className="relative w-12 h-12 rounded-xl border border-black/10 dark:border-white/10 overflow-hidden shrink-0 shadow-lg cursor-pointer">
+                      <input
+                        type="color"
+                        value={brandColor}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="absolute inset-[-8px] w-[calc(100%+16px)] h-[calc(100%+16px)] cursor-pointer outline-none border-0"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-[11px] font-black text-slate-800 dark:text-zinc-200 uppercase tracking-widest">Color Spectrum Picker</p>
+                      <p className="text-[9px] text-zinc-500 dark:text-zinc-500 font-medium">Click the thumbnail to open the visual canvas palette selector.</p>
+                    </div>
+                  </div>
+
+                  {/* RGB sliders section */}
+                  <div className="space-y-3 bg-slate-50 dark:bg-white/[0.01] p-4 rounded-2xl border border-black/5 dark:border-white/5">
+                    <p className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Fine-Tune Color Matrix</p>
+                    
+                    {/* Red */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-mono font-bold text-zinc-500 dark:text-zinc-400">
+                        <span>Red</span>
+                        <span>{rgbVals.r}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="255"
+                        value={rgbVals.r}
+                        onChange={(e) => handleSliderChange('r', parseInt(e.target.value))}
+                        className="w-full h-1 bg-red-500/10 rounded-lg appearance-none cursor-pointer accent-red-500"
+                      />
+                    </div>
+
+                    {/* Green */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-mono font-bold text-zinc-500 dark:text-zinc-400">
+                        <span>Green</span>
+                        <span>{rgbVals.g}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="255"
+                        value={rgbVals.g}
+                        onChange={(e) => handleSliderChange('g', parseInt(e.target.value))}
+                        className="w-full h-1 bg-emerald-500/10 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                      />
+                    </div>
+
+                    {/* Blue */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-mono font-bold text-zinc-500 dark:text-zinc-400">
+                        <span>Blue</span>
+                        <span>{rgbVals.b}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="255"
+                        value={rgbVals.b}
+                        onChange={(e) => handleSliderChange('b', parseInt(e.target.value))}
+                        className="w-full h-1 bg-blue-500/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer buttons */}
+                <div className="flex gap-4 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setBrandColor('#6366f1')}
+                    className="flex-1 py-3 border border-black/5 dark:border-white/5 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-500/5 transition-all cursor-pointer"
+                  >
+                    Reset Defaults
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest bg-brand text-white dark:text-zinc-950 shadow-xl shadow-brand/20 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer"
+                  >
+                    Apply Theme
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, showManualTickers, setShowManualTickers, setAngelOneEnabled }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void, setAngelOneEnabled?: (v: boolean) => void }) => {
   const { addToast } = useToasts();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1982,7 +2175,30 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
       if (!response.ok) throw new Error(data.error);
 
       try {
-        const text = data.text.trim();
+        let text = data.text.trim();
+        // Handle markdown block wrapping (e.g. ```json ... ```)
+        if (text.includes("```")) {
+          const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+          if (match && match[1]) {
+            text = match[1].trim();
+          }
+        }
+        // Extract array or object if prefixed/suffixed with any explanation/note
+        if (!text.startsWith('[') && !text.startsWith('{')) {
+          const arrayStart = text.indexOf('[');
+          const objectStart = text.indexOf('{');
+          if (arrayStart !== -1 && (objectStart === -1 || arrayStart < objectStart)) {
+            const lastBracket = text.lastIndexOf(']');
+            if (lastBracket !== -1) {
+              text = text.substring(arrayStart, lastBracket + 1);
+            }
+          } else if (objectStart !== -1) {
+            const lastBrace = text.lastIndexOf('}');
+            if (lastBrace !== -1) {
+              text = text.substring(objectStart, lastBrace + 1);
+            }
+          }
+        }
         return JSON.parse(text);
       } catch (e) {
         console.error("Failed to parse Gemini SGB intelligence", e);
@@ -3487,10 +3703,18 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 <div className="flex items-center gap-1.5 md:gap-2">
                   <button 
                     onClick={() => setIsDarkMode(!isDarkMode)}
-                    className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 transition-all shrink-0"
+                    className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 transition-all shrink-0 cursor-pointer"
                     aria-label="Toggle theme"
                   >
                     {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+                  </button>
+                  <button 
+                    onClick={() => setShowThemePicker(true)}
+                    className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 hover:text-brand transition-all shrink-0 cursor-pointer"
+                    title="Customize UI Colors"
+                    aria-label="Customize UI Colors"
+                  >
+                    <Palette size={16} style={{ color: brandColor }} />
                   </button>
                   <button 
                     onClick={handleLogout}
@@ -3941,6 +4165,12 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
         )}
       </AnimatePresence>
       <ScrollToTop />
+      <ThemeCustomizerModal 
+        isOpen={showThemePicker} 
+        onClose={() => setShowThemePicker(false)} 
+        brandColor={brandColor} 
+        setBrandColor={setBrandColor} 
+      />
     </div>
   );
 }
