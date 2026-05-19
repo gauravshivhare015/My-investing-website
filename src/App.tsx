@@ -1860,7 +1860,7 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
   );
 };
 
-const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean }) => {
+const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, showManualTickers, setShowManualTickers }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void }) => {
   const { addToast } = useToasts();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
@@ -2572,7 +2572,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode }:
           <tbody>
             <AnimatePresence initial={false} mode="popLayout">
               {apiData.length > 0 && (
-                <motion.tr layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-slate-50 dark:bg-zinc-800/50">
+                <motion.tr key="api-header" layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-slate-50 dark:bg-zinc-800/50">
                   <td colSpan={8} className="px-6 py-2 text-[9px] font-black uppercase tracking-widest text-brand border-b border-black/5 dark:border-white/5">
                      Synched Tickers
                   </td>
@@ -2581,13 +2581,23 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode }:
               {apiData.map(renderRow)}
               
               {manualData.length > 0 && apiData.length > 0 && (
-                <motion.tr layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-slate-50 dark:bg-zinc-800/50">
-                  <td colSpan={8} className="px-6 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-black/5 dark:border-white/5">
-                     Manual Tickers
+                <motion.tr key="manual-header" layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-slate-50 dark:bg-zinc-800/50">
+                  <td colSpan={8} className="px-6 py-2 border-b border-black/5 dark:border-white/5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
+                         Manual Tickers
+                      </span>
+                      <button 
+                         onClick={() => setShowManualTickers(!showManualTickers)}
+                         className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showManualTickers ? 'bg-brand' : 'bg-slate-300 dark:bg-zinc-700'}`}
+                      >
+                         <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${showManualTickers ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                      </button>
+                    </div>
                   </td>
                 </motion.tr>
               )}
-              {manualData.map(renderRow)}
+              {(!isApiMode || showManualTickers) && manualData.map(renderRow)}
             </AnimatePresence>
           </tbody>
         </table>
@@ -2654,6 +2664,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
   const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
   const [activeSection, setActiveSection] = useState<string>('dashboards');
+  const [showManualTickers, setShowManualTickers] = useState(true);
 
   const saveHoldingToFirestore = async (holding: any) => {
     if (!user) return;
@@ -2780,21 +2791,37 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
   useEffect(() => {
     if (activeTab !== 'dashboard') return;
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          setActiveSection(entry.target.id);
+
+    const handleScroll = () => {
+      const ids = ['dashboards', 'performance', 'savings', 'holdings', 'prompts', 'documents'];
+      let currentActive = 'dashboards';
+      
+      const scrollPosition = window.scrollY + 200; // offset of the sticky nav height
+
+      for (const id of ids) {
+        const element = document.getElementById(id);
+        if (element) {
+          // getOffsetTop recursively to account for nested offset parents
+          let offsetTop = 0;
+          let el: HTMLElement | null = element;
+          while (el) {
+            offsetTop += el.offsetTop;
+            el = el.offsetParent as HTMLElement;
+          }
+          
+          if (offsetTop <= scrollPosition) {
+            currentActive = id;
+          }
         }
-      });
-    }, { rootMargin: '-150px 0px -60% 0px' });
+      }
 
-    const ids = ['dashboards', 'performance', 'savings', 'holdings', 'api-trades', 'prompts', 'documents'];
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    });
+      setActiveSection(currentActive);
+    };
 
-    return () => observer.disconnect();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [activeTab]);
 
   useEffect(() => {
@@ -3240,7 +3267,9 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const apiMV = (angelOneEnabled && apiSummary?.totalholdingvalue) ? Number(apiSummary.totalholdingvalue) : 0;
     
     // Categorized calculation for live value from ALL holdings (synced or manual)
-    const validHoldingsDetail = angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken);
+    const validHoldingsDetail = angelOneEnabled 
+      ? (showManualTickers ? holdings : holdings.filter(h => h.symboltoken))
+      : holdings.filter(h => !h.symboltoken);
     const holdingsDetail = validHoldingsDetail.reduce((acc, h: any) => {
       const val = (Number(h.qty) || 0) * (Number(h.ltp) || 0);
       const cleanedVal = isNaN(val) ? 0 : val;
@@ -3332,7 +3361,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       f10: fv(curMV, projectionRate, 10, avgY),
       f20: fv(curMV, projectionRate, 20, avgY)
     };
-  }, [validTxns, validHistory, benchmarkHistory, holdings, apiSummary, angelOneEnabled]);
+  }, [validTxns, validHistory, benchmarkHistory, holdings, apiSummary, angelOneEnabled, showManualTickers]);
 
   const chartData = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -3627,7 +3656,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="holdings">
-                <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} />
+                <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} />
               </div>
 
               {angelOneEnabled && apiTrades.length > 0 && (
@@ -3668,7 +3697,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
               <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-slate-200/60 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/10 focus:border-brand/30 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-slate-200 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-slate-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-slate-300 dark:text-zinc-800 mb-4" /><p className="text-slate-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout key="add-prompt-btn"><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-slate-200 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-slate-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-slate-300 dark:text-zinc-800 mb-4" /><p className="text-slate-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
               </div>
 
               <div id="documents" className="space-y-6 pb-10">
