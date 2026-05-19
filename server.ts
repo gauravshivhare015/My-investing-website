@@ -458,8 +458,9 @@ async function startServer() {
   // API Route for generic Gemini generation
   app.post("/api/gemini/generate", async (req, res) => {
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API || process.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server. Please define it in your environment variables/Settings." });
       }
       
       const { model = "gemini-3-flash-preview", contents, config } = req.body;
@@ -468,7 +469,7 @@ async function startServer() {
       }
 
       const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       
       // Process inlineData inside contents to ensure type matching
       // If we passed base64Data via inlineData, it might be string, but SDK requires specific interface
@@ -496,12 +497,13 @@ async function startServer() {
         return res.status(400).json({ error: "Missing base64Data or mimeType" });
       }
 
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API || process.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server. Please define it in your environment/Settings." });
       }
 
       const { GoogleGenAI, Type } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       
       let inlineData = base64Data;
       if (typeof base64Data === 'string' && base64Data.includes(',')) {

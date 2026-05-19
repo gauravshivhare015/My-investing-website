@@ -1,5 +1,6 @@
 {
   "name": "Investment Website",
   "description": "investment website",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
