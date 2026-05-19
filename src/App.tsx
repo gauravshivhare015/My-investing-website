@@ -2653,6 +2653,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const [transactions, setTransactions] = useState<any[]>([]);
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
   const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
+  const [activeSection, setActiveSection] = useState<string>('dashboards');
 
   const saveHoldingToFirestore = async (holding: any) => {
     if (!user) return;
@@ -2773,8 +2774,28 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     if (el) {
       const top = el.getBoundingClientRect().top + window.scrollY - 130; // Offset for sticky nav
       window.scrollTo({ top, behavior: 'smooth' });
+      setActiveSection(id);
     }
   };
+
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id);
+        }
+      });
+    }, { rootMargin: '-150px 0px -60% 0px' });
+
+    const ids = ['dashboards', 'performance', 'savings', 'holdings', 'api-trades', 'prompts', 'documents'];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [activeTab]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -3455,13 +3476,13 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
             </div>
           </div>
           {activeTab === 'dashboard' && (
-            <div className="max-w-7xl mx-auto px-4 w-full flex items-center justify-start gap-4 md:gap-8 py-2 md:py-3 text-[9px] md:text-xs font-black tracking-[0.15em] text-slate-400 dark:text-zinc-500 uppercase overflow-x-auto no-scrollbar scroll-smooth">
-              <button onClick={() => scrollToSection('dashboards')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Dashboards</button>
-              <button onClick={() => scrollToSection('performance')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Performance</button>
-              <button onClick={() => scrollToSection('savings')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Savings</button>
-              <button onClick={() => scrollToSection('holdings')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Equity</button>
-              <button onClick={() => scrollToSection('prompts')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Vault</button>
-              <button onClick={() => scrollToSection('documents')} className="hover:text-brand transition-colors whitespace-nowrap shrink-0">Docs</button>
+            <div className="max-w-7xl mx-auto px-4 w-full flex items-center justify-start gap-2 md:gap-4 py-2 md:py-3 text-[9px] md:text-xs font-black tracking-[0.15em] text-slate-400 dark:text-zinc-500 uppercase overflow-x-auto no-scrollbar scroll-smooth">
+              <button onClick={() => scrollToSection('dashboards')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'dashboards' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Dashboards</button>
+              <button onClick={() => scrollToSection('performance')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'performance' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Performance</button>
+              <button onClick={() => scrollToSection('savings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'savings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Savings</button>
+              <button onClick={() => scrollToSection('holdings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'holdings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Equity</button>
+              <button onClick={() => scrollToSection('prompts')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'prompts' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Vault</button>
+              <button onClick={() => scrollToSection('documents')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'documents' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Docs</button>
             </div>
           )}
         </nav>
