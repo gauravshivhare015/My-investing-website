@@ -866,26 +866,6 @@ async function startServer() {
     }
   });
 
-  // Ensure any other /api routes that don't match return a 404 JSON (prevents HTML fallback)
-  app.all("/api/*", (req, res) => {
-    res.status(404).json({ error: `API route ${req.method} ${req.url} not found` });
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
   // In-memory cache for benchmark data to improve performance
   let benchmarkCache: { data: any, timestamp: number } | null = null;
   const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
@@ -970,6 +950,26 @@ async function startServer() {
       });
     }
   });
+
+  // Ensure any other /api routes that don't match return a 404 JSON (prevents HTML fallback)
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `API route ${req.method} ${req.url} not found` });
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
 
   // Global Error Handler
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {
