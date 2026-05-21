@@ -69,7 +69,8 @@ async function startServer() {
 
 
   // app.use(express.json()); // This is already called below
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use(cookieParser());
 
   // Health and Config status routes

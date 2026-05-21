@@ -2316,22 +2316,73 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
     setSortConfig({ key, direction });
   };
 
+  const compressImage = (dataUrl: string, maxDimension: number = 1600): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        } else {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
   const processImageWithGemini = async (base64Data: string, mimeType: string) => {
     setIsProcessing(true);
     addToast("AI Analysis", "secure backend is extracting data from your upload...", "info");
     try {
-      const response = await fetch('/api/extract-holdings', {
+      let finalData = base64Data;
+      let finalMimeType = mimeType;
+
+      // Ensure standard phone camera snapshots (often 3MB - 12MB) are compressed client-side
+      // to resolve payload limits and speed up AI extraction
+      if (mimeType.startsWith('image/') && (base64Data.startsWith('data:') || base64Data.length > 200000)) {
+        try {
+          addToast("AI Analysis", "Compressing image for faster extraction...", "info");
+          let srcUrl = base64Data;
+          if (!base64Data.startsWith('data:')) {
+            srcUrl = `data:${mimeType};base64,${base64Data}`;
+          }
+          const compressed = await compressImage(srcUrl);
+          finalData = compressed;
+          finalMimeType = 'image/jpeg';
+        } catch (compErr) {
+          console.error("Client side compression failed, using original data", compErr);
+        }
+      }
+
+      const resVal = await fetchJson('/api/extract-holdings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64Data, mimeType })
+        body: JSON.stringify({ base64Data: finalData, mimeType: finalMimeType })
       });
       
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to extract holdings data via AI");
+      if (!resVal.ok) {
+        throw new Error(resVal.data?.error || `Failed to extract holdings. Server returned status ${resVal.status}`);
       }
       
-      if (result.status === "success" && result.data) {
+      const result = resVal.data;
+      if (result && result.status === "success" && result.data) {
           const newHoldings = result.data;
           if (newHoldings.length > 0) {
              addToast("Resolving Assets", "AI extracted data. Now resolving market identifiers...", "info");
@@ -2357,6 +2408,8 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
           } else {
              addToast("No Data Detected", "Could not identify any holdings in the provided source.", "warning");
           }
+      } else {
+        throw new Error(result?.error || "Invalid response format received from extraction server.");
       }
     } catch(err) {
       console.error(err);
