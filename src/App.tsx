@@ -2395,13 +2395,27 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
+    if (!file) return;
+
+    if (file.type.startsWith('image/')) {
        const reader = new FileReader();
        reader.onload = (event) => {
          const dataUrl = event.target?.result as string;
          processImageWithGemini(dataUrl, file.type);
        };
        reader.readAsDataURL(file);
+    } else if (file.type === 'text/plain' || file.type === 'text/csv' || file.name.endsWith('.txt') || file.name.endsWith('.csv')) {
+       const reader = new FileReader();
+       reader.onload = (event) => {
+         const text = event.target?.result as string;
+         if (text) {
+           const base64Text = btoa(unescape(encodeURIComponent(text)));
+           processImageWithGemini(base64Text, 'text/plain');
+         }
+       };
+       reader.readAsText(file);
+    } else {
+       addToast("Unsupported Format", "Please upload an image (.png, .jpg), plain text (.txt), CSV (.csv) file, or paste your holdings text directly.", "warning");
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -2686,7 +2700,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
               <span className="hidden sm:inline relative z-10 drop-shadow-sm">Add SGB</span>
            </button>
 
-           <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+           <input type="file" accept="image/*,.txt,.csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
         </div>
       </div>
 
