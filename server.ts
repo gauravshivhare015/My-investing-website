@@ -488,6 +488,40 @@ async function startServer() {
     return JSON.parse(cleaned);
   };
 
+  const getGeminiErrorMessage = (e: any): string => {
+    if (!e) return "Unknown Gemini API error";
+    
+    let msg = e.message || "";
+    if (typeof msg === 'string') {
+      try {
+        let cleaned = msg.trim();
+        if (cleaned.startsWith("ApiError:")) {
+          cleaned = cleaned.substring(9).trim();
+        }
+        const parsed = JSON.parse(cleaned);
+        if (parsed?.error?.message) {
+          msg = parsed.error.message;
+        }
+      } catch (parseErr) {
+        // Not a valid JSON
+      }
+    }
+
+    const lowerMsg = String(msg).toLowerCase();
+    if (
+      lowerMsg.includes("quota") || 
+      lowerMsg.includes("429") || 
+      lowerMsg.includes("resource_exhausted") || 
+      lowerMsg.includes("limit") ||
+      (e.status && String(e.status).includes("RESOURCE_EXHAUSTED")) ||
+      e.code === 429
+    ) {
+      return "Gemini API Quota Exhausted: Your configured Gemini API key has exceeded its limits or rate limits (RESOURCE_EXHAUSTED). Please check your billing details, API tier, or usage quotas, and try again later.";
+    }
+
+    return msg || e.status || "Failed to generate AI content";
+  };
+
   // API Route for generic Gemini generation
   app.post("/api/gemini/generate", async (req, res) => {
     try {
@@ -517,7 +551,9 @@ async function startServer() {
       res.json({ status: "success", text: response.text });
     } catch (e: any) {
       console.error("Gemini Gen API Error:", e);
-      res.status(500).json({ error: e.message || "Failed to generate AI content" });
+      const errMsg = getGeminiErrorMessage(e);
+      const status = errMsg.includes("Quota Exhausted") ? 429 : 500;
+      res.status(status).json({ error: errMsg });
     }
   });
 
@@ -580,7 +616,9 @@ async function startServer() {
       res.json({ status: "success", data: parsedData });
     } catch (e: any) {
       console.error("AI Extractor Error:", e);
-      res.status(500).json({ error: e.message || "Failed to extract data via AI" });
+      const errMsg = getGeminiErrorMessage(e);
+      const status = errMsg.includes("Quota Exhausted") ? 429 : 500;
+      res.status(status).json({ error: errMsg });
     }
   });
   

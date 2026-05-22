@@ -630,6 +630,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
           weight: 600 as const,
         },
         filter: function(tooltipItem: any) {
+          if (!tooltipItem || !tooltipItem.dataset) return false;
           if (tooltipItem.dataset.label === 'Projected Remainder') {
              return tooltipItem.raw !== 0;
           }
@@ -637,9 +638,11 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
         },
         callbacks: {
           title: (items: any[]) => {
-            return `📅 ${items[0].label}`;
+            if (!items || items.length === 0 || !items[0]) return '';
+            return `📅 ${items[0].label || ''}`;
           },
           label: function(context: any) {
+            if (!context || !context.dataset) return '';
             let label = context.dataset.label || '';
             const isActual = label === 'Actual Net Savings';
             const icon = isActual ? '💰 ' : '🔮 ';
@@ -647,7 +650,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
             if (label) {
               label = icon + label + ': ';
             }
-            if (context.parsed.y !== null) {
+            if (context.parsed && context.parsed.y !== null && context.parsed.y !== undefined) {
               label += new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(context.parsed.y);
             }
             return label;
@@ -1451,6 +1454,7 @@ const BrokerCredentialsModal = ({ isOpen, onClose, brokerId, user, currentSettin
 };
 
 const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOpen: boolean, onClose: () => void, onSave: (h: any) => void, onDelete: (h: any) => void, holding: any }) => {
+  const { addToast } = useToasts();
   const [newPrice, setNewPrice] = useState('');
   const [newQty, setNewQty] = useState('');
   const [newAvg, setNewAvg] = useState('');
@@ -1489,8 +1493,9 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
         setNewPrice(match[0]);
         setIsAiVerifiedLocal(true);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      addToast("AI Quota Exhausted", e.message || "Your Gemini API Key has exceeded its usage limits.", "error");
     } finally {
       setIsAiLoading(false);
     }
@@ -1665,6 +1670,7 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
 };
 
 const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boolean, onClose: () => void, onSave: (h: any) => void, brandColor: string }) => {
+  const { addToast } = useToasts();
   const [name, setName] = useState('');
   const [qty, setQty] = useState('');
   const [avg, setAvg] = useState('');
@@ -1779,7 +1785,9 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
                           if (!response.ok) throw new Error(data.error);
                           const match = data.text.match(/\d+(\.\d+)?/);
                           if (match) setLtp(match[0]);
-                        } catch(e) {} finally { setIsSearching(false); }
+                        } catch(e: any) {
+                          addToast("AI Quota Exhausted", e.message || "Your Gemini API Key has exceeded its usage limits.", "error");
+                        } finally { setIsSearching(false); }
                       }}
                       disabled={isSearching || !name}
                       className="p-3 bg-amber-500/10 text-amber-500 rounded-2xl hover:bg-amber-500 hover:text-white transition-all disabled:opacity-50"
@@ -2204,8 +2212,9 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
         console.error("Failed to parse Gemini SGB intelligence", e);
         return null;
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Gemini SGB Intelligence Error", e);
+      addToast("AI Quota Exhausted", e.message || "Your Gemini API Key has exceeded its usage limits.", "error");
       return null;
     }
   };
@@ -4005,7 +4014,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <div id="documents" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-500"><File size={20} /></div>
+                    <div className="p-2 bg-brand/10 rounded-lg text-brand"><File size={20} /></div>
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Documents</h3>
                   </div>
                 </div>
@@ -4019,9 +4028,9 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 {files.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                     {files.map(f => (
-                      <a key={f.id} href={f.data} download={f.name} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-black/5 dark:border-white/5 shadow-lg hover:border-cyan-500/30 transition-all group flex items-center gap-4 cursor-pointer">
-                        <div className="p-3 bg-black/5 dark:bg-white/5 rounded-xl group-hover:bg-cyan-500/10 transition-colors">
-                          {f.type.includes('pdf') ? <FileText size={24} className="text-rose-500"/> : <ImageIcon size={24} className="text-cyan-500"/>}
+                      <a key={f.id} href={f.data} download={f.name} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-black/5 dark:border-white/5 shadow-lg hover:border-brand/30 transition-all group flex items-center gap-4 cursor-pointer">
+                        <div className="p-3 bg-black/5 dark:bg-white/5 rounded-xl group-hover:bg-brand/10 transition-colors">
+                          {f.type.includes('pdf') ? <FileText size={24} className="text-rose-500"/> : <ImageIcon size={24} className="text-brand"/>}
                         </div>
                         <div className="overflow-hidden">
                           <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{f.name}</h4>
@@ -4029,8 +4038,8 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                         </div>
                       </a>
                     ))}
-                    <button onClick={() => documentFileInputRef.current?.click()} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-dashed border-black/10 dark:border-white/10 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/5 group flex items-center justify-center gap-4 cursor-pointer min-h-[90px]">
-                      <div className="flex items-center gap-3 text-zinc-500 group-hover:text-cyan-500 transition-colors">
+                    <button onClick={() => documentFileInputRef.current?.click()} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-dashed border-black/10 dark:border-white/10 transition-all hover:border-brand/30 hover:bg-brand/5 group flex items-center justify-center gap-4 cursor-pointer min-h-[90px]">
+                      <div className="flex items-center gap-3 text-zinc-500 group-hover:text-brand transition-colors">
                         <Plus size={20} />
                         <span className="text-sm font-bold tracking-tight">Add Document</span>
                       </div>
@@ -4040,7 +4049,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center">
                     <File size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" />
                     <p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">No documents uploaded yet.</p>
-                    <button onClick={() => documentFileInputRef.current?.click()} className="mt-6 px-6 py-2 bg-cyan-500 text-white font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2">
+                    <button onClick={() => documentFileInputRef.current?.click()} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2">
                       <Plus size={16} /> Add Document
                     </button>
                   </div>
