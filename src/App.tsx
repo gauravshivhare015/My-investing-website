@@ -372,7 +372,7 @@ const AnimatedLogo = ({ brandColor }: { brandColor: string }) => {
           textAnchor="middle" 
           fill={brandColor}
         >
-          G
+          I
         </text>
         <g strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" className="stroke-slate-50 dark:stroke-[#0d0d0d]">
           <path className="logo-crack-1" d="M 32 12 L 28 22 L 34 28 L 26 36" strokeDasharray="100" strokeDashoffset="100" />
@@ -3739,7 +3739,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
         <InteractiveBackground isDarkMode={isDarkMode} brandColor={brandColor} />
         <div className="relative z-10 bg-surface-light dark:bg-[#0d0d0d] p-8 rounded-3xl border border-black/5 dark:border-white/5 w-full max-w-sm flex flex-col items-center shadow-2xl">
           <AnimatedLogo brandColor={brandColor} />
-          <h2 className="text-xl font-bold mt-6 mb-2 tracking-tight">Portfolio Tracker Pro</h2>
+          <h2 className="text-xl font-bold mt-6 mb-2 tracking-tight">Investwise</h2>
           <p className="text-zinc-500 text-sm mb-8 text-center">Sign in to access your dashboard.</p>
           <button 
             onClick={handleGoogleSignIn}

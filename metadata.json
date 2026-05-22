@@ -1,6 +1,6 @@
 {
-  "name": "Investment Website",
-  "description": "investment website",
+  "name": "Investwise",
+  "description": "Investment website for tracking bonds and stocks",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

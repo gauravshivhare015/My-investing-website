@@ -20,9 +20,9 @@ export default defineConfig(({mode}) => {
           enabled: false
         },
         manifest: {
-          name: 'SGB Tracker',
-          short_name: 'SGB Tracker',
-          description: 'Track your Sovereign Gold Bonds',
+          name: 'Investwise',
+          short_name: 'Investwise',
+          description: 'Track your investments securely',
           theme_color: '#000000',
           background_color: '#ffffff',
           display: 'standalone',
