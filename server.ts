@@ -530,7 +530,7 @@ async function startServer() {
         return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server. Please define it in your environment variables/Settings." });
       }
       
-      const { model = "gemini-3-flash-preview", contents, config } = req.body;
+      const { model = "gemini-3.5-flash", contents, config } = req.body;
       if (!contents) {
         return res.status(400).json({ error: "Missing contents" });
       }
@@ -580,7 +580,7 @@ async function startServer() {
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.5-flash",
         contents: [
             {
                inlineData: { data: inlineData, mimeType }
@@ -623,6 +623,67 @@ async function startServer() {
   });
   
   // API Route for Market Data
+  app.post("/api/gemini/chat", async (req, res) => {
+    try {
+      const { messages } = req.body;
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API || process.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY is missing." });
+
+      const { GoogleGenAI, Type } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+
+      const overwriteEquityDashboard: any = {
+        name: "overwriteEquityDashboard",
+        description: "Extract data from a portfolio screenshot and arrange it into the Equity Dashboard strictly overwriting all existing data.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            holdings: {
+              type: Type.ARRAY,
+              description: "List of extracted holdings",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING, description: "Tickers (Stock Name/Symbol)" },
+                  qty: { type: Type.NUMBER, description: "Calculated quantity" },
+                  avg: { type: Type.NUMBER, description: "Calculated average buy price" },
+                  ltp: { type: Type.NUMBER, description: "LTP (Last Traded Price)" },
+                  marketValue: { type: Type.NUMBER, description: "Market Value" },
+                  overallGain: { type: Type.NUMBER, description: "Overall Gain (Absolute profit)" },
+                  todayGain: { type: Type.NUMBER, description: "Today's Gain (Absolute profit today)" },
+                  type: { type: Type.STRING, description: "Type of asset. E.g. EQUITY" }
+                },
+                required: ["name", "ltp", "marketValue", "overallGain", "todayGain"]
+              }
+            }
+          },
+          required: ["holdings"]
+        }
+      };
+
+      const hasImage = messages.some((m: any) => m.parts && m.parts.some((p: any) => p.inlineData));
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: messages,
+        config: {
+          systemInstruction: "You are an intelligent investment guide and automated data-entry assistant for an Equity Dashboard webapp. You explain UI features and financial calculations. If the user uploads a broker portfolio screenshot, you MUST extract the Tickers, LTP, Market Value, Overall Gain, and Today's Gain and invoke 'overwriteEquityDashboard'. You can infer `qty` (Market Value / LTP) and `avg` ((Market Value - Overall Gain) / qty) if they are missing.",
+          tools: [{ functionDeclarations: [overwriteEquityDashboard] }],
+        }
+      });
+      
+      const functionCall = response.functionCalls?.[0];
+      if (functionCall) {
+        return res.json({ functionCall: { name: functionCall.name, args: functionCall.args } });
+      }
+
+      return res.json({ text: response.text });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/market/data", async (req, res, next) => {
     try {
       const { tokens } = req.body; // Array of { exchange, tradingsymbol, symboltoken }
@@ -910,46 +971,37 @@ async function startServer() {
 
   // API Route to fetch Benchmark (Niftybees) historical data from Yahoo Finance
   app.get("/api/market/benchmark", async (req, res) => {
+    // ... benchmark content is unchanged
     const startTime = Date.now();
     try {
-      // Check cache first
       if (benchmarkCache && (Date.now() - benchmarkCache.timestamp < CACHE_DURATION)) {
-        console.log(`[PERF] Serving benchmark data from cache (took ${Date.now() - startTime}ms)`);
+        console.log(`[PERF] Serving benchmark data from cache (took ${Date.now() - benchmarkCache.timestamp}ms)`);
         return res.json(benchmarkCache.data);
       }
 
       console.log(`[PERF] Cache miss. Fetching Niftybees data from Yahoo Finance...`);
       const symbol = "NIFTYBEES.NS";
-      const range = "max"; // Fetch maximum available history (back to 2002 for Nifty BEES)
-      const interval = "1d"; // Daily intervals
+      const range = "max";
+      const interval = "1d";
       
-      // Using query2 which is often more stable in cloud environments
       const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`;
-      
       const axios = (await import("axios")).default;
       const response = await axios.get(yahooUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Origin': 'https://finance.yahoo.com'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': 'application/json'
         },
-        timeout: 10000 // 10 second timeout
+        timeout: 10000
       });
 
       if (!response.data?.chart?.result?.[0]) {
-        console.error("Yahoo Finance: No result in response", response.data);
         return res.status(500).json({ error: "No data returned from Yahoo Finance" });
       }
 
       const result = response.data.chart.result[0];
       const timestamps = result.timestamp || [];
       const indicators = result.indicators?.quote?.[0];
-      
-      if (!timestamps.length || !indicators) {
-        return res.json({ status: "success", history: [], message: "Empty dataset" });
-      }
-
-      const adjClose = result.indicators.adjclose?.[0]?.adjclose || indicators.close;
+      const adjClose = result.indicators?.adjclose?.[0]?.adjclose || indicators.close;
 
       const items = timestamps.map((ts: number, i: number) => ({
         date: new Date(ts * 1000).toISOString().split('T')[0],
@@ -969,23 +1021,51 @@ async function startServer() {
         history: items
       };
 
-      // Update cache
-      benchmarkCache = {
-        data: responseData,
-        timestamp: Date.now()
-      };
-
-      console.log(`[PERF] Yahoo Finance fetch completed in ${Date.now() - startTime}ms`);
+      benchmarkCache = { data: responseData, timestamp: Date.now() };
       res.json(responseData);
     } catch (error: any) {
-      console.error("Yahoo Finance Benchmark Error:", error.message);
-      // For fetch errors (ECONNREFUSED, ENOTFOUND, etc.) or timeouts
-      const statusCode = error.response?.status || 500;
-      res.status(statusCode).json({ 
-        error: "Failed to fetch benchmark data", 
-        details: error.message,
-        status: "error"
+      res.status(500).json({ error: "Failed to fetch benchmark data", details: error.message, status: "error" });
+    }
+  });
+
+  // API Route for BSE Corporate Filings
+  app.get("/api/bse/filings", async (req, res) => {
+    try {
+      const { scripCode = "", days = 30 } = req.query;
+      const toDate = new Date();
+      const fromDate = new Date();
+      fromDate.setDate(toDate.getDate() - Number(days));
+
+      const formatDt = (d: Date) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}${mm}${dd}`;
+      };
+
+      const url = `https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?pageno=1&strCat=-1&strPrevDate=${formatDt(fromDate)}&strScrip=${scripCode}&strSearch=P&strToDate=${formatDt(toDate)}&strType=C`;
+      
+      const axios = (await import("axios")).default;
+      const response = await axios.get(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Origin': 'https://www.bseindia.com',
+            'Referer': 'https://www.bseindia.com/',
+            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-site'
+        }
       });
+      
+      res.json({ status: "success", data: response.data.Table || [] });
+    } catch (error: any) {
+      console.error("BSE Filings error:", error.message);
+      res.status(500).json({ error: "Failed to fetch from BSE", details: error.message });
     }
   });
 

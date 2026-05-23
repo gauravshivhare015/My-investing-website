@@ -24,6 +24,9 @@ import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from
 import { doc, setDoc, deleteDoc, collection, onSnapshot, query, getDocs, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
+import { FilingsDashboard } from './components/FilingsDashboard';
+import { GeminiChatbot } from './components/GeminiChatbot';
+
 // --- Error Handling & Toast Imports ---
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider, useToasts } from './context/ToastContext';
@@ -372,7 +375,7 @@ const AnimatedLogo = ({ brandColor }: { brandColor: string }) => {
           textAnchor="middle" 
           fill={brandColor}
         >
-          I
+          G
         </text>
         <g strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" className="stroke-slate-50 dark:stroke-[#0d0d0d]">
           <path className="logo-crack-1" d="M 32 12 L 28 22 L 34 28 L 26 36" strokeDasharray="100" strokeDashoffset="100" />
@@ -1480,7 +1483,7 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.5-flash",
           contents: `Identify the absolute latest market price (LTP) for Indian Sovereign Gold Bond/Stock: ${holding.name}. Return ONLY the number. No other text. If not found, estimate based on 24k gold price or recent stock price.`,
           config: { tools: [{ googleSearch: {} }] }
         })
@@ -1776,7 +1779,7 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              model: "gemini-3-flash-preview",
+                              model: "gemini-3.5-flash",
                               contents: `Find the absolute latest market price for SGB titled: ${name}. Only return the numeric price.`,
                               config: { tools: [{ googleSearch: {} }] }
                             })
@@ -2156,7 +2159,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.5-flash",
           contents: `Identify the absolute latest market Last Traded Price (LTP) from today's real-time trading for THESE Indian Sovereign Gold Bonds (SGBs): ${sgbNames}. 
            Search Google for the most recent NSE/BSE gold bond prices. 
            Return a JSON array of objects with 'name' and 'ltp'. 
@@ -2956,6 +2959,38 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
   const [activeSection, setActiveSection] = useState<string>('dashboards');
   const [showManualTickers, setShowManualTickers] = useState(true);
+
+  const handleOverwriteHoldings = async (newHoldings: any[]) => {
+    if (!user) {
+      throw new Error("You must be logged in to update the dashboard.");
+    }
+    const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'holdings'));
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+    });
+    
+    for (const holding of newHoldings) {
+      const h: any = {
+         id: generateId(),
+         name: holding.name || 'Unknown',
+         type: holding.type || 'EQUITY',
+         ltp: holding.ltp || 0,
+         cur: holding.marketValue || 0,
+         overallGlAbs: holding.overallGain || 0,
+         dayGlAbs: holding.todayGain || 0,
+         qty: holding.qty || ((holding.marketValue && holding.ltp) ? (holding.marketValue / holding.ltp) : 1),
+      };
+      h.avg = holding.avg || ((h.cur - h.overallGlAbs) / h.qty);
+      
+      const holdingId = `holding_${h.name.replace(/\s+/g, '_').toUpperCase()}_${Date.now()}`;
+      h.id = holdingId;
+      batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'holdings', holdingId), h);
+    }
+    
+    await batch.commit();
+  };
 
   const saveHoldingToFirestore = async (holding: any) => {
     if (!user) return;
@@ -3809,6 +3844,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <button onClick={() => scrollToSection('performance')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'performance' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Performance</button>
               <button onClick={() => scrollToSection('savings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'savings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Savings</button>
               <button onClick={() => scrollToSection('holdings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'holdings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Equity</button>
+              <button onClick={() => scrollToSection('filings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'filings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Filings</button>
               <button onClick={() => scrollToSection('prompts')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'prompts' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Prompts</button>
               <button onClick={() => scrollToSection('documents')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'documents' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Docs</button>
             </div>
@@ -3968,6 +4004,10 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
               <div id="holdings">
                 <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} setAngelOneEnabled={setAngelOneEnabled} />
+              </div>
+
+              <div id="filings">
+                <FilingsDashboard brandColor={brandColor} />
               </div>
 
               {angelOneEnabled && apiTrades.length > 0 && (
@@ -4246,6 +4286,12 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
         onClose={() => setShowThemePicker(false)} 
         brandColor={brandColor} 
         setBrandColor={setBrandColor} 
+      />
+      <GeminiChatbot 
+        brandColor={brandColor} 
+        user={user} 
+        holdings={holdings} 
+        onOverwriteHoldings={handleOverwriteHoldings} 
       />
     </div>
   );
