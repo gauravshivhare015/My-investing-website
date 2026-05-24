@@ -5,6 +5,9 @@ import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { TOTP } from "totp-generator";
+import YahooFinance from 'yahoo-finance2';
+
+const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 
 // In CJS bundle (production), __dirname and require are already defined.
 // In tsx (dev), we handle ESM/CJS compatibility carefully.
@@ -678,6 +681,31 @@ async function startServer() {
       }
 
       return res.json({ text: response.text });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/yahoo/search", async (req, res) => {
+    try {
+      const { q } = req.query;
+      if (!q) return res.status(400).json({ error: "Missing query parameter" });
+      const results = await yahooFinance.search(q as string, { quotesCount: 10, newsCount: 0 });
+      res.json(results);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/yahoo/quote", async (req, res) => {
+    try {
+      const { symbols } = req.query;
+      if (!symbols) return res.status(400).json({ error: "Missing symbols parameter" });
+      const symbolList = (symbols as string).split(',').map(s => s.trim());
+      const results = await yahooFinance.quote(symbolList);
+      res.json({ quoteResponse: { result: Array.isArray(results) ? results : [results] } });
     } catch (err: any) {
       console.error(err);
       res.status(500).json({ error: err.message });

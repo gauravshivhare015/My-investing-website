@@ -15,7 +15,7 @@ import {
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon, Coins, Sparkles,
   UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
-  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu, Settings, RefreshCw, Edit3, Save, Clock, Loader2, Zap, Info, History
+  ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu, Settings, RefreshCw, Edit3, Save, Clock, Loader2, Zap, Info, History, Star
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -26,6 +26,7 @@ import { auth, db } from './firebase';
 
 import { FilingsDashboard } from './components/FilingsDashboard';
 import { GeminiChatbot } from './components/GeminiChatbot';
+import { AddTickerFeature } from './components/AddTickerFeature';
 
 // --- Error Handling & Toast Imports ---
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -805,12 +806,30 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
   );
 };
 
-const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, onDrop, onEditContent, onEditTitle, onDelete }: any) => {
+const PromptCard = ({ id, title, content, rating, isDragging, onDragStart, onDragOver, onDrop, onEditContent, onEditTitle, onEditRating, onDelete }: any) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState(title);
+
+  const cycleRating = () => {
+    const ratings = ['none', 'bronze', 'silver', 'gold'];
+    const currentIndex = ratings.indexOf(rating || 'none');
+    const nextRating = ratings[(currentIndex + 1) % ratings.length];
+    if (onEditRating) {
+      onEditRating(id, nextRating);
+    }
+  };
+
+  const getStarColors = () => {
+    switch(rating) {
+      case 'gold': return 'text-amber-400 fill-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.6)]';
+      case 'silver': return 'text-slate-400 fill-slate-400 drop-shadow-[0_0_4px_rgba(148,163,184,0.6)]';
+      case 'bronze': return 'text-amber-700 fill-amber-700 drop-shadow-[0_0_4px_rgba(180,83,9,0.6)]';
+      default: return 'text-zinc-300 dark:text-zinc-700 hover:text-amber-400 opacity-50 hover:opacity-100';
+    }
+  };
 
   const handleCopy = () => {
     const textArea = document.createElement("textarea");
@@ -849,7 +868,14 @@ const PromptCard = ({ id, title, content, isDragging, onDragStart, onDragOver, o
     >
       <div className="flex justify-between items-center w-full">
         <div className="flex items-center gap-2 max-w-[80%] w-full">
-          <div className={`text-zinc-400 dark:text-zinc-600 ${isEditingTitle || isEditing ? 'opacity-50' : 'cursor-grab active:cursor-grabbing'}`}><GripVertical size={14} /></div>
+          <div className={`text-zinc-400 dark:text-zinc-600 shrink-0 ${isEditingTitle || isEditing ? 'opacity-50' : 'cursor-grab active:cursor-grabbing'}`}><GripVertical size={14} /></div>
+          <button 
+            onClick={(e) => { e.stopPropagation(); cycleRating(); }} 
+            className={`transition-all duration-300 shrink-0 ${getStarColors()} hover:scale-110 active:scale-95`}
+            title="Sort Priority (None -> Bronze -> Silver -> Gold)"
+          >
+            <Star size={14} />
+          </button>
           {isEditingTitle ? (
             <input
               autoFocus
@@ -2081,6 +2107,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
   const [editingHolding, setEditingHolding] = useState<any>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasAutoRefreshed = useRef(false);
 
   useEffect(() => {
     if (holdings.length === 0) return;
@@ -2105,6 +2132,13 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
     };
 
     scheduleNextRefresh();
+    
+    // Auto sync Yahoo/SGB on first mount if there are manual holdings
+    if (!hasAutoRefreshed.current && holdings.some(h => (h.type === 'EQUITY' && !h.symboltoken) || h.type === 'SGB')) {
+      hasAutoRefreshed.current = true;
+      // Small delay to let the UI finish mounting
+      setTimeout(() => refreshPrices(), 2000);
+    }
 
     return () => clearTimeout(timeoutId);
   }, [holdings.length]);
@@ -2310,7 +2344,39 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
         }
       }
 
-      const totalUpdated = apiUpdateCount + (sgbsToUpdate.length > 0 ? sgbsToUpdate.length : 0);
+      // Step 4: Yahoo Finance for Manual Equities
+      const manualEquitiesToUpdate = workingHoldings.filter(h => h.type === 'EQUITY' && !h.symboltoken);
+      let yahooUpdateCount = 0;
+      
+      if (manualEquitiesToUpdate.length > 0) {
+        addToast("Yahoo Finance Sync", `Fetching live prices for ${manualEquitiesToUpdate.length} manual equities...`, "info");
+        try {
+          const symbols = manualEquitiesToUpdate.map(h => h.name).join(',');
+          const res = await fetch(`/api/yahoo/quote?symbols=${encodeURIComponent(symbols)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const results = data.quoteResponse?.result || [];
+            
+            for (const item of results) {
+               const holding = manualEquitiesToUpdate.find(h => h.name === item.symbol);
+               if (holding && item.regularMarketPrice > 0) {
+                 await onSaveHolding({
+                   ...holding,
+                   ltp: item.regularMarketPrice,
+                   pClose: item.regularMarketPreviousClose,
+                   isAiVerified: false,
+                   updatedAt: new Date().toISOString()
+                 });
+                 yahooUpdateCount++;
+               }
+            }
+          }
+        } catch (err) {
+          console.error("Yahoo fetch failed", err);
+        }
+      }
+
+      const totalUpdated = apiUpdateCount + (sgbsToUpdate.length > 0 ? sgbsToUpdate.length : 0) + yahooUpdateCount;
       addToast("Portfolio Updated", `Synced ${totalUpdated} assets using API and AI intelligence.`, "success");
     } catch (err) {
       console.error(err);
@@ -2684,7 +2750,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
 
   return (
     <div 
-      className="bg-white/40 dark:bg-[#0d0d0d]/40 backdrop-blur-xl rounded-[2rem] p-6 md:p-8 overflow-hidden mt-8 border border-white/20 dark:border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] focus:outline-none focus:ring-4 focus:ring-brand/10 transition-all duration-500 relative"
+      className="bg-white/40 dark:bg-[#0d0d0d]/40 backdrop-blur-xl rounded-[2rem] p-6 md:p-8 overflow-visible mt-8 border border-white/20 dark:border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] focus:outline-none focus:ring-4 focus:ring-brand/10 transition-all duration-500 relative"
       onPaste={handlePaste}
       tabIndex={0}
     >
@@ -2692,7 +2758,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
       <div className="absolute -top-24 -right-24 w-64 h-64 bg-brand/10 blur-[100px] rounded-full pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-emerald-500/5 blur-[100px] rounded-full pointer-events-none" />
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6 relative z-10 border-b border-zinc-100 dark:border-zinc-800/60 pb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6 relative z-[60] border-b border-zinc-100 dark:border-zinc-800/60 pb-8">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-6 bg-brand rounded-full shadow-[0_0_12px_rgba(99,102,241,0.3)]" />
@@ -2746,15 +2812,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
            
            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800 hidden sm:block" />
 
-           <button 
-             onClick={() => fileInputRef.current?.click()}
-             disabled={isProcessing}
-             className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-100 hover:shadow-2xl hover:shadow-brand/20 active:scale-95 transition-all flex items-center gap-3 shadow-xl border-b-2 border-zinc-950 dark:border-zinc-300 group disabled:opacity-50"
-           >
-              <div className="absolute inset-0 bg-gradient-to-b from-white/10 dark:from-black/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <Cpu size={14} className="group-hover:rotate-12 transition-transform relative z-10" />
-              <span className="hidden sm:inline relative z-10 drop-shadow-sm">{isProcessing ? 'Processing...' : 'AI Import'}</span>
-           </button>
+           <AddTickerFeature user={user} holdings={holdings} onSaveHolding={onSaveHolding} />
 
            <button 
              onClick={() => setIsManualModalOpen(true)}
@@ -2764,12 +2822,10 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
               <Coins size={14} className="group-hover:scale-110 transition-transform drop-shadow-md relative z-10" />
               <span className="hidden sm:inline relative z-10 drop-shadow-sm">Add SGB</span>
            </button>
-
-           <input type="file" accept="image/*,.txt,.csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
         </div>
       </div>
 
-      <div className="overflow-x-auto hide-scrollbar relative z-10">
+      <div className="overflow-x-auto hide-scrollbar relative z-0">
         <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px]">
           <thead>
             <tr className="uppercase text-[9px] font-black tracking-[0.2em] text-slate-400 select-none">
@@ -3443,6 +3499,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     updateCloudDoc('prompts', id, { title: newTitle });
   };
 
+  const handlePromptRatingEdit = (id: string, newRating: string) => {
+    setPrompts(prev => prev.map(p => p.id === id ? { ...p, rating: newRating } : p));
+    updateCloudDoc('prompts', id, { rating: newRating });
+  };
+
   const handlePromptDelete = (id: string) => {
     setPrompts(prev => prev.filter(p => p.id !== id));
     deleteCloudDoc('prompts', id);
@@ -4048,7 +4109,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
               <div id="prompts" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-slate-200/60 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/10 focus:border-brand/30 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" /></div></div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout key="add-prompt-btn"><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-slate-200 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-slate-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-slate-300 dark:text-zinc-800 mb-4" /><p className="text-slate-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} rating={p.rating} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onEditRating={handlePromptRatingEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout key="add-prompt-btn"><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-slate-200 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-slate-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-slate-300 dark:text-zinc-800 mb-4" /><p className="text-slate-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
               </div>
 
               <div id="documents" className="space-y-6 pb-10">
