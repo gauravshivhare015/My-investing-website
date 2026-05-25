@@ -699,13 +699,50 @@ async function startServer() {
     }
   });
 
+  const quoteCache = new Map<string, { data: any; timestamp: number }>();
+  const CACHE_TTL = 60 * 1000; // 1 minute cache
+
   app.get("/api/yahoo/quote", async (req, res) => {
     try {
       const { symbols } = req.query;
       if (!symbols) return res.status(400).json({ error: "Missing symbols parameter" });
       const symbolList = (symbols as string).split(',').map(s => s.trim());
-      const results = await yahooFinance.quote(symbolList);
-      res.json({ quoteResponse: { result: Array.isArray(results) ? results : [results] } });
+      
+      const now = Date.now();
+      const resultsToFetch: string[] = [];
+      const cachedResults: any[] = [];
+
+      for (const sym of symbolList) {
+        const cached = quoteCache.get(sym);
+        if (cached && (now - cached.timestamp < CACHE_TTL)) {
+          cachedResults.push(cached.data);
+        } else {
+          resultsToFetch.push(sym);
+        }
+      }
+
+      const freshResults: any[] = [];
+      if (resultsToFetch.length > 0) {
+        // Batch into chunks of 50 to avoid URI too long or rate limiting
+        for (let i = 0; i < resultsToFetch.length; i += 50) {
+          const chunk = resultsToFetch.slice(i, i + 50);
+          try {
+            const results = await yahooFinance.quote(chunk, { fields: ['regularMarketPrice', 'regularMarketPreviousClose', 'symbol', 'shortName'] });
+            const arr = Array.isArray(results) ? results : [results];
+            arr.forEach((q: any) => {
+              if (q && q.symbol) {
+                 quoteCache.set(q.symbol, { data: q, timestamp: now });
+                 freshResults.push(q);
+              }
+            });
+          } catch (chunkErr) {
+            console.error(`Failed fetching quotes for chunk: ${chunk.join(',')}`, chunkErr);
+          }
+        }
+      }
+
+      const finalResults = [...cachedResults, ...freshResults];
+      res.json({ quoteResponse: { result: finalResults } });
     } catch (err: any) {
       console.error(err);
       res.status(500).json({ error: err.message });
