@@ -5,9 +5,9 @@ import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { TOTP } from "totp-generator";
-import YahooFinance from 'yahoo-finance2';
-
-const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+import pkg from 'yahoo-finance2';
+const YahooFinance = pkg.default || pkg;
+const yahooFinance = new (YahooFinance as any)({ suppressNotices: ['yahooSurvey'] });
 
 // In CJS bundle (production), __dirname and require are already defined.
 // In tsx (dev), we handle ESM/CJS compatibility carefully.
