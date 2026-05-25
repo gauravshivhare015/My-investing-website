@@ -25,14 +25,22 @@ import { doc, setDoc, deleteDoc, collection, onSnapshot, query, orderBy, getDocs
 import { auth, db } from './firebase';
 
 import { FilingsDashboard } from './components/FilingsDashboard';
-import { GeminiChatbot } from './components/GeminiChatbot';
 import { AddTickerFeature } from './components/AddTickerFeature';
 
 // --- Error Handling & Toast Imports ---
-import { Chart as ChartJS, ArcElement, Tooltip as ChartTooltip, Legend as ChartLegend } from 'chart.js';
-import { Pie as ChartPie } from 'react-chartjs-2';
+import { 
+  Chart as ChartJS, 
+  ArcElement, 
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title as ChartJSTitle,
+  Tooltip as ChartJSTooltip,
+  Legend as ChartJSLegend
+} from 'chart.js';
+import { Pie as ChartPie, Bar as ChartJSBar } from 'react-chartjs-2';
 
-ChartJS.register(ArcElement, ChartTooltip, ChartLegend);
+ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, ChartJSTitle, ChartJSTooltip, ChartJSLegend);
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider, useToasts } from './context/ToastContext';
@@ -111,25 +119,6 @@ const fetchJson = async (url: string, options?: RequestInit) => {
 
 // --- AI Imports ---
 import gsap from 'gsap';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title as ChartJSTitle,
-  Tooltip as ChartJSTooltip,
-  Legend as ChartJSLegend,
-} from 'chart.js';
-import { Bar as ChartJSBar } from 'react-chartjs-2';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ChartJSTitle,
-  ChartJSTooltip,
-  ChartJSLegend
-);
 
 const appId = 'portfolio-tracker-pro';
 
@@ -444,7 +433,15 @@ const BenchmarkComparisonChart = ({ data, isDarkMode }: { data: any[], isDarkMod
   );
 };
 
-const AllocationPieChart = ({ breakdown, isDarkMode, brandColor }: any) => {
+const AllocationPieChart = ({ breakdown, isDarkMode, brandColor, isLoading = false }: any) => {
+  if (isLoading) {
+    return (
+      <div className="h-[200px] w-full flex items-center justify-center">
+        <div className="w-[160px] h-[160px] rounded-full border-[20px] border-slate-200 dark:border-white/10 animate-pulse" />
+      </div>
+    );
+  }
+
   const data = [
     { name: 'Stocks', value: breakdown.stocks, color: brandColor },
     { name: 'SGB', value: breakdown.sgb, color: '#f59e0b' },
@@ -486,7 +483,7 @@ const AllocationPieChart = ({ breakdown, isDarkMode, brandColor }: any) => {
   );
 };
 
-const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transactions: any[], isDarkMode: boolean, brandColor: string }) => {
+const NetSavingsChart = ({ transactions, isDarkMode, brandColor, isLoading = false }: { transactions: any[], isDarkMode: boolean, brandColor: string, isLoading?: boolean }) => {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
   const chartData = useMemo(() => {
@@ -521,9 +518,9 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
       if (!years.includes(currentYear) && projectedRemainder > 0) years.push(currentYear);
       years.sort((a, b) => a - b);
 
-      const growthColor = '#6366f1'; // Indigo 500
-      const capitalColor = isDarkMode ? '#ffffff' : '#475569'; // Crisp White / Slate 600
-      const projectionColor = '#a78bfa'; // Violet 400
+      const growthColor = brandColor; // Theme Color
+      const capitalColor = brandColor; // Theme Color
+      const projectionColor = brandColor; // Also adapt projection to match the theme somewhat
 
       return {
         labels: years.map(String),
@@ -565,7 +562,7 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
       };
     } else {
       // Monthly view
-      const growthColor = '#6366f1'; // Indigo 500
+      const growthColor = brandColor; // Theme Color
       const monthlyData: Record<number, number> = {};
       for (let i = 0; i < 12; i++) monthlyData[i] = 0;
       
@@ -599,6 +596,14 @@ const NetSavingsChart = ({ transactions, isDarkMode, brandColor }: { transaction
       };
     }
   }, [transactions, selectedYear, brandColor, isDarkMode]);
+
+  if (isLoading) {
+    return (
+      <div className="bg-white/40 dark:bg-[#0d0d0d]/40 backdrop-blur-xl rounded-[2rem] p-6 md:p-8 mt-8 border border-white/20 dark:border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] h-[350px] flex items-center justify-center">
+         <div className="w-full h-full bg-slate-200/50 dark:bg-white/5 rounded-2xl animate-pulse" />
+      </div>
+    );
+  }
 
   const options = {
     responsive: true,
@@ -749,20 +754,13 @@ const NumberTicker = ({ value }: { value: number }) => {
   const [displayValue, setDisplayValue] = useState(0);
   
   useEffect(() => {
-    const controls = animate(displayValue, value, {
-      duration: 1.5,
-      ease: [0.32, 0.72, 0, 1], // Custom cubic-bezier for smooth finish
-      onUpdate(latest) {
-        setDisplayValue(Math.floor(latest));
-      }
-    });
-    return () => controls.stop();
+    setDisplayValue(value);
   }, [value]);
 
-  return <span>{formatCurrency(displayValue)}</span>;
+  return <span>{displayValue > 0 || displayValue < 0 ? formatCurrency(displayValue) : formatCurrency(value)}</span>;
 };
 
-const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highlightColor = 'brand', delay = 0, className = "" }: any) => {
+const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highlightColor = 'brand', delay = 0, className = "", isLoading = false }: any) => {
   const colorMap: Record<string, string> = {
     brand: 'text-brand',
     cyan: 'text-cyan-400',
@@ -780,6 +778,21 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
 
   const colorClass = colorMap[highlightColor] || colorMap.brand;
   const lineGlow = glowMap[highlightColor] || glowMap.brand;
+
+  if (isLoading) {
+    return (
+      <div className={`relative overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 opacity-80 ${className}`}>
+        <div className="flex items-center justify-between mb-2 md:mb-4 gap-2">
+          <div className="h-4 w-24 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+          <div className="w-8 h-8 md:w-10 md:h-10 bg-slate-200 dark:bg-white/10 rounded-lg md:rounded-xl animate-pulse" />
+        </div>
+        <div>
+          <div className="h-8 md:h-10 w-32 bg-slate-200 dark:bg-white/10 rounded mb-2 animate-pulse" />
+          <div className="h-4 w-40 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div 
@@ -2104,7 +2117,7 @@ const ThemeCustomizerModal = ({ isOpen, onClose, brandColor, setBrandColor }: { 
   );
 };
 
-const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, showManualTickers, setShowManualTickers, setAngelOneEnabled }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void, setAngelOneEnabled?: (v: boolean) => void }) => {
+const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, showManualTickers, setShowManualTickers, setAngelOneEnabled, isLoading = false }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void, setAngelOneEnabled?: (v: boolean) => void, isLoading?: boolean }) => {
   const { addToast } = useToasts();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
@@ -2355,7 +2368,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
       let sheetUpdateCount = 0;
       if (manualEquities.length > 0) {
         try {
-          const res = await fetch('https://docs.google.com/spreadsheets/d/1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o/export?format=csv');
+          const res = await fetch('/api/sheets?id=1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o');
           const csvText = await res.text();
           const lines = csvText.split('\n').filter(line => line.trim().length > 0);
           const parsed = lines.slice(1).map(line => {
@@ -2820,10 +2833,6 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
               <h3 className="text-slate-800 dark:text-white font-black uppercase tracking-[0.2em] text-[11px] md:text-sm">
                 Equity Dashboard
               </h3>
-              <p className="text-[9px] md:text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
-                <Activity size={10} className="text-brand" />
-                DASHBOARD ANALYTICS SYSTEM
-              </p>
             </div>
             {isProcessing && (
                <motion.div 
@@ -2898,9 +2907,11 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
         {viewMode === 'chart' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 py-8 animate-in fade-in zoom-in duration-500">
             <div className="bg-white/50 dark:bg-zinc-900/50 p-6 md:p-8 rounded-[2rem] border border-white/20 dark:border-white/5 shadow-xl flex flex-col items-center justify-center transform transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:bg-white/60 dark:hover:bg-zinc-800/60 group">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 border-brand/30 pb-2 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-brand" /> Invested Allocation</h4>
-              <div className="w-full max-w-[320px] aspect-square relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)]">
-                {invChartData.data.length > 0 ? (
+              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 border-indigo-500/30 dark:border-indigo-400/30 pb-2 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500 dark:bg-indigo-400" /> Invested Allocation</h4>
+              <div className="w-full max-w-[320px] aspect-square relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)] flex items-center justify-center">
+                {isLoading ? (
+                  <div className="w-[80%] h-[80%] rounded-full border-[30px] border-slate-200 dark:border-white/10 animate-pulse" />
+                ) : invChartData.data.length > 0 ? (
                 <ChartPie 
                   data={{
                     labels: invChartData.labels,
@@ -2943,9 +2954,11 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
               </div>
             </div>
             <div className="bg-white/50 dark:bg-zinc-900/50 p-6 md:p-8 rounded-[2rem] border border-white/20 dark:border-white/5 shadow-xl flex flex-col items-center justify-center transform transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:bg-white/60 dark:hover:bg-zinc-800/60 group">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 border-emerald-500/30 pb-2 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Market Value Allocation</h4>
-              <div className="w-full max-w-[320px] aspect-square relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)]">
-                {mktChartData.data.length > 0 ? (
+              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 pb-2 flex items-center gap-2" style={{ borderBottomColor: `${brandColor}4D` }}><div className="w-2 h-2 rounded-full" style={{ backgroundColor: brandColor }} /> Market Value Allocation</h4>
+              <div className="w-full max-w-[320px] aspect-square relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)] flex items-center justify-center">
+                {isLoading ? (
+                  <div className="w-[80%] h-[80%] rounded-full border-[30px] border-slate-200 dark:border-white/10 animate-pulse" />
+                ) : mktChartData.data.length > 0 ? (
                 <ChartPie 
                   data={{
                     labels: mktChartData.labels,
@@ -2989,9 +3002,10 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
             </div>
           </div>
         ) : (
-          <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px] animate-in fade-in zoom-in duration-500">
-            <thead>
-            <tr className="uppercase text-[9px] font-black tracking-[0.2em] text-slate-400 select-none">
+          <div className="overflow-auto max-h-[80vh] w-full pb-4 scrollbar-thin scrollbar-thumb-white/10">
+            <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px] animate-in fade-in zoom-in duration-500">
+              <thead className="sticky top-0 z-40 bg-white dark:bg-[#121212] backdrop-blur-3xl shadow-sm rounded-lg" style={{ boxShadow: '0 4px 20px -5px rgba(0,0,0,0.2)' }}>
+              <tr className="uppercase text-[9px] font-black tracking-[0.2em] text-slate-400 select-none">
               <th className={`px-6 py-4 cursor-pointer rounded-l-2xl transition-all duration-500 group/th ${sortConfig.key === 'name' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('name')}>
                 <div className="flex items-center gap-1.5">
                   <span className="relative">
@@ -3114,6 +3128,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
             </AnimatePresence>
           </tbody>
         </table>
+        </div>
         )}
       </div>
       <ManualSgbModal 
@@ -3142,6 +3157,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
   const CORRECT_PIN = '1234'; 
   const documentFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -3458,6 +3474,8 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
     const unsubHoldings = onSnapshot(holdingsPath, (snapshot) => {
       setHoldings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      // Artificial short delay after snapshot fires to simulate data fetch and show nice skeletons
+      setTimeout(() => setLoadingData(false), 600);
     }, (error) => handleFirestoreError(error, OperationType.LIST, holdingsPath.path));
 
     return () => { 
@@ -4089,6 +4107,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
             <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
               <div id="dashboards" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                 <MetricCard 
+                  isLoading={loadingData}
                   title="Current Value" 
                   value={formatCurrency(metrics.currentMV)} 
                   rawValue={metrics.currentMV}
@@ -4113,17 +4132,12 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                         </div>
                       )}
                     </div>
-                    ) : (
-                      <div className="flex flex-col gap-1 mt-1">
-                        <div className="flex justify-start items-center text-[10px] uppercase tracking-wider font-bold text-zinc-500 dark:text-zinc-400">
-                          Offline Snapshot
-                        </div>
-                      </div>
-                    )
+                    ) : null
                   }
                   className="bg-gradient-to-br from-brand/10 to-brand/5 border-brand/30 dark:bg-gradient-to-br dark:from-brand/20 dark:to-transparent dark:border-brand/40 shadow-[0_20px_40px_-15px_rgba(var(--brand-color-rgb),0.3)]"
                 />
                 <MetricCard 
+                  isLoading={loadingData}
                   title="Net Deposits" 
                   value={formatCurrency(metrics.net)} 
                   rawValue={metrics.net}
@@ -4132,6 +4146,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   highlightColor="zinc"
                 />
                 <MetricCard 
+                  isLoading={loadingData}
                   title="Unrealized P/L" 
                   value={formatCurrency(metrics.pl)} 
                   rawValue={metrics.pl}
@@ -4208,27 +4223,31 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   </div>
                 </div>
                 <div className="h-[250px] md:h-[400px] w-full mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -25 }}>
-                        <CartesianGrid vertical={false} stroke={isDarkMode ? "#1f1f22" : "#e4e4e7"} strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} minTickGap={30} />
-                      <YAxis tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
-                      <Tooltip contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
-                      <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: '10px', fontWeight: 600, paddingBottom: '10px', color: '#71717a' }} iconType="circle" />
-                      <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#818cf8" : "#6366f1"} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#818cf8' : '#6366f1'}} />
-                      <Line type="monotone" dataKey="Market Value" stroke="#34d399" strokeWidth={3} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#34d399"}} />
-                      <Line type="monotone" dataKey="Benchmark Value" stroke="#22d3ee" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#22d3ee"}} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  {loadingData ? (
+                    <div className="w-full h-full bg-slate-200/50 dark:bg-white/5 rounded-2xl animate-pulse" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -25 }}>
+                          <CartesianGrid vertical={false} stroke={isDarkMode ? "#1f1f22" : "#e4e4e7"} strokeDasharray="3 3" />
+                        <XAxis dataKey="date" tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={d => new Date(d).toLocaleDateString(undefined,{month:'short', year:'2-digit'})} minTickGap={30} />
+                        <YAxis tick={{fill:'#71717a', fontSize:9, fontWeight:600}} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
+                        <Tooltip contentStyle={{backgroundColor: isDarkMode ? '#09090b' : '#ffffff', border: isDarkMode ? '1px solid #27272a' : '1px solid #e2e8f0', borderRadius:12, boxShadow:'0 10px 30px -10px rgba(0,0,0,0.2)'}} itemStyle={{fontWeight:700, padding:'2px 0', fontSize: '10px'}} labelStyle={{color:'#71717a', fontWeight:700, marginBottom:'6px', textTransform:'uppercase', fontSize:'8px', letterSpacing:'0.05em'}} formatter={(value: number) => formatCurrency(value)} />
+                        <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: '10px', fontWeight: 600, paddingBottom: '10px', color: '#71717a' }} iconType="circle" />
+                        <Line type="monotone" dataKey="Cumulative Net Deposits" stroke={isDarkMode ? "#818cf8" : "#6366f1"} strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: isDarkMode ? '#818cf8' : '#6366f1'}} />
+                        <Line type="monotone" dataKey="Market Value" stroke={brandColor} strokeWidth={3} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: brandColor}} />
+                        <Line type="monotone" dataKey="Benchmark Value" stroke="#22d3ee" strokeWidth={2} dot={false} activeDot={{r:4, stroke: isDarkMode ? '#050505' : '#ffffff', strokeWidth:2, fill: "#22d3ee"}} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </motion.div>
 
               <div id="savings">
-                <NetSavingsChart transactions={validTxns} isDarkMode={isDarkMode} brandColor={brandColor} />
+                <NetSavingsChart isLoading={loadingData} transactions={validTxns} isDarkMode={isDarkMode} brandColor={brandColor} />
               </div>
 
               <div id="holdings">
-                <HoldingsTable user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} setAngelOneEnabled={setAngelOneEnabled} />
+                <HoldingsTable isLoading={loadingData} user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} setAngelOneEnabled={setAngelOneEnabled} />
               </div>
 
               <div id="filings">
@@ -4511,12 +4530,6 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
         onClose={() => setShowThemePicker(false)} 
         brandColor={brandColor} 
         setBrandColor={setBrandColor} 
-      />
-      <GeminiChatbot 
-        brandColor={brandColor} 
-        user={user} 
-        holdings={holdings} 
-        onOverwriteHoldings={handleOverwriteHoldings} 
       />
     </div>
   );

@@ -523,6 +523,23 @@ async function startServer() {
     return msg || e.status || "Failed to generate AI content";
   };
 
+  // API Route to proxy fetching Google Sheets (bypassing browser CORS)
+  app.get("/api/sheets", async (req, res) => {
+    try {
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ error: "Missing sheet id" });
+      const url = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv`;
+      const docRes = await fetch(url);
+      if (!docRes.ok) throw new Error(`Google Sheets responded with ${docRes.status}`);
+      const csvText = await docRes.text();
+      res.setHeader("Content-Type", "text/csv");
+      res.send(csvText);
+    } catch (err: any) {
+      console.error("Sheets proxy error:", err);
+      res.status(500).json({ error: "Failed to fetch from Google Sheets", details: err.message });
+    }
+  });
+
   // API Route for generic Gemini generation
   app.post("/api/gemini/generate", async (req, res) => {
     try {
