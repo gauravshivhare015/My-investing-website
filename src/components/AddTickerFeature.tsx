@@ -26,10 +26,28 @@ export function AddTickerFeature({
   const [localTickers, setLocalTickers] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/nse_tickers.json')
-      .then(res => res.json())
-      .then(data => setLocalTickers(data))
-      .catch(err => console.error('Failed to load local tickers', err));
+    // Fetch from Google Sheet exclusively for company/ticker search and market prices
+    fetch('https://docs.google.com/spreadsheets/d/1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o/export?format=csv')
+      .then(res => res.text())
+      .then(csvText => {
+        const lines = csvText.split('\n').filter(line => line.trim().length > 0);
+        const parsed = lines.slice(1).map(line => {
+          // split by comma, ignoring internal commas inside names assuming simple structure
+          const cols = line.split(',');
+          const symbol = cols[0];
+          const name = cols[1];
+          const ltpStr = cols[cols.length - 1]; // LTP is the last column
+          return {
+            symbol: symbol,
+            shortname: name,
+            longname: name,
+            ltp: parseFloat(ltpStr) || 0,
+            exchDisp: 'NSE'
+          };
+        }).filter(t => t.symbol);
+        setLocalTickers(parsed);
+      })
+      .catch(err => console.error('Failed to load tickers from Google Sheets', err));
 
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -40,48 +58,21 @@ export function AddTickerFeature({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const searchYahoo = async (q: string) => {
+  const searchTicker = async (q: string) => {
     if (!q.trim()) {
       setResults([]);
       return;
     }
     setIsLoading(true);
     
-    // Efficient Local Search first
     const qUpper = q.toUpperCase();
     const exactLocalMatches = localTickers.filter(t => 
       t.symbol.toUpperCase().startsWith(qUpper) || 
       t.shortname?.toUpperCase().includes(qUpper)
     ).slice(0, 8);
 
-    if (exactLocalMatches.length >= 4) {
-      setResults(exactLocalMatches);
-      setIsLoading(false);
-      return; // Fast path!
-    }
-
-    try {
-      const res = await fetch(`/api/yahoo/search?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      if (data.quotes) {
-        // Filter and try to prioritize Indian exchanges (suffix .NS, .BO)
-        let quotes = data.quotes.filter((q: any) => q.quoteType === 'EQUITY' || q.quoteType === 'ETF');
-        const indianQuotes = quotes.filter((q: any) => q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'));
-        const otherQuotes = quotes.filter((q: any) => !q.symbol.endsWith('.NS') && !q.symbol.endsWith('.BO'));
-        
-        // Merge local matches with remote matches and deduplicate
-        const merged = [...exactLocalMatches, ...indianQuotes, ...otherQuotes];
-        const unique = Array.from(new Map(merged.map(item => [item.symbol, item])).values());
-        
-        setResults(unique.slice(0, 8));
-      }
-    } catch (err: any) {
-      console.error(err);
-      // Fallback completely to local if API fails
-      setResults(exactLocalMatches);
-    } finally {
-      setIsLoading(false);
-    }
+    setResults(exactLocalMatches);
+    setIsLoading(false);
   };
 
   const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,52 +83,13 @@ export function AddTickerFeature({
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     
     searchTimeout.current = setTimeout(() => {
-      searchYahoo(q);
+      searchTicker(q);
     }, 300);
   };
 
   const getLivePrice = async (symbol: string) => {
-    // Check caching logic for Indian Market Hours (9:15 AM - 3:30 PM IST)
-    const now = new Date();
-    // Convert current time to IST
-    const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-    const day = istTime.getDay();
-    const hours = istTime.getHours();
-    const minutes = istTime.getMinutes();
-    const timeInMinutes = hours * 60 + minutes;
-    
-    // Market is closed if weekend OR outside 9:15 AM (555 mins) to 3:30 PM (930 mins)
-    const isMarketClosed = day === 0 || day === 6 || timeInMinutes < 555 || timeInMinutes > 930;
-    
-    const cacheKey = `ltp_cache_${symbol}`;
-    
-    if (isMarketClosed) {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const { price, timestamp } = JSON.parse(cached);
-        // Ensure cache is from within the last 24h if it's weekend, etc
-        if (now.getTime() - timestamp < 48 * 60 * 60 * 1000) {
-          return price;
-        }
-      }
-    }
-
-    try {
-      const res = await fetch(`/api/yahoo/quote?symbols=${encodeURIComponent(symbol)}`);
-      const data = await res.json();
-      if (data.quoteResponse?.result?.length > 0) {
-        const price = data.quoteResponse.result[0].regularMarketPrice;
-        localStorage.setItem(cacheKey, JSON.stringify({ price, timestamp: now.getTime() }));
-        return price;
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    
-    // Fallback to cache if error
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) return JSON.parse(cached).price;
-    return 0;
+    const ticker = localTickers.find(t => t.symbol.toUpperCase() === symbol.toUpperCase());
+    return ticker ? ticker.ltp : 0;
   };
 
   const handleSelectTicker = async (ticker: any) => {

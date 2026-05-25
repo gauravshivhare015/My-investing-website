@@ -5,9 +5,7 @@ import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { TOTP } from "totp-generator";
-import pkg from 'yahoo-finance2';
-const YahooFinance = (pkg as any).default || pkg;
-const yahooFinance = new (YahooFinance as any)({ suppressNotices: ['yahooSurvey'] });
+
 
 // In CJS bundle (production), __dirname and require are already defined.
 // In tsx (dev), we handle ESM/CJS compatibility carefully.
@@ -687,67 +685,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/yahoo/search", async (req, res) => {
-    try {
-      const { q } = req.query;
-      if (!q) return res.status(400).json({ error: "Missing query parameter" });
-      const results = await yahooFinance.search(q as string, { quotesCount: 10, newsCount: 0 });
-      res.json(results);
-    } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ error: err.message });
-    }
-  });
 
-  const quoteCache = new Map<string, { data: any; timestamp: number }>();
-  const CACHE_TTL = 60 * 1000; // 1 minute cache
-
-  app.get("/api/yahoo/quote", async (req, res) => {
-    try {
-      const { symbols } = req.query;
-      if (!symbols) return res.status(400).json({ error: "Missing symbols parameter" });
-      const symbolList = (symbols as string).split(',').map(s => s.trim());
-      
-      const now = Date.now();
-      const resultsToFetch: string[] = [];
-      const cachedResults: any[] = [];
-
-      for (const sym of symbolList) {
-        const cached = quoteCache.get(sym);
-        if (cached && (now - cached.timestamp < CACHE_TTL)) {
-          cachedResults.push(cached.data);
-        } else {
-          resultsToFetch.push(sym);
-        }
-      }
-
-      const freshResults: any[] = [];
-      if (resultsToFetch.length > 0) {
-        // Batch into chunks of 50 to avoid URI too long or rate limiting
-        for (let i = 0; i < resultsToFetch.length; i += 50) {
-          const chunk = resultsToFetch.slice(i, i + 50);
-          try {
-            const results = await yahooFinance.quote(chunk, { fields: ['regularMarketPrice', 'regularMarketPreviousClose', 'symbol', 'shortName'] });
-            const arr = Array.isArray(results) ? results : [results];
-            arr.forEach((q: any) => {
-              if (q && q.symbol) {
-                 quoteCache.set(q.symbol, { data: q, timestamp: now });
-                 freshResults.push(q);
-              }
-            });
-          } catch (chunkErr) {
-            console.error(`Failed fetching quotes for chunk: ${chunk.join(',')}`, chunkErr);
-          }
-        }
-      }
-
-      const finalResults = [...cachedResults, ...freshResults];
-      res.json({ quoteResponse: { result: finalResults } });
-    } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   app.post("/api/market/data", async (req, res, next) => {
     try {
@@ -1034,56 +972,22 @@ async function startServer() {
   let benchmarkCache: { data: any, timestamp: number } | null = null;
   const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
 
-  // API Route to fetch Benchmark (Niftybees) historical data from Yahoo Finance
+  // API Route to fetch Benchmark (Niftybees) historical data
   app.get("/api/market/benchmark", async (req, res) => {
-    // ... benchmark content is unchanged
-    const startTime = Date.now();
     try {
       if (benchmarkCache && (Date.now() - benchmarkCache.timestamp < CACHE_DURATION)) {
         console.log(`[PERF] Serving benchmark data from cache (took ${Date.now() - benchmarkCache.timestamp}ms)`);
         return res.json(benchmarkCache.data);
       }
 
-      console.log(`[PERF] Cache miss. Fetching Niftybees data from Yahoo Finance...`);
-      const symbol = "NIFTYBEES.NS";
-      const range = "max";
-      const interval = "1d";
-      
-      const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`;
-      const axios = (await import("axios")).default;
-      const response = await axios.get(yahooUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-          'Accept': 'application/json'
-        },
-        timeout: 10000
-      });
-
-      if (!response.data?.chart?.result?.[0]) {
-        return res.status(500).json({ error: "No data returned from Yahoo Finance" });
-      }
-
-      const result = response.data.chart.result[0];
-      const timestamps = result.timestamp || [];
-      const indicators = result.indicators?.quote?.[0];
-      const adjClose = result.indicators?.adjclose?.[0]?.adjclose || indicators.close;
-
-      const items = timestamps.map((ts: number, i: number) => ({
-        date: new Date(ts * 1000).toISOString().split('T')[0],
-        price: adjClose[i] ? Number(adjClose[i].toFixed(2)) : (indicators.close[i] ? Number(indicators.close[i].toFixed(2)) : null),
-        high: indicators.high[i] ? Number(indicators.high[i].toFixed(2)) : null,
-        low: indicators.low[i] ? Number(indicators.low[i].toFixed(2)) : null,
-        open: indicators.open[i] ? Number(indicators.open[i].toFixed(2)) : null,
-        volume: indicators.volume[i]
-      })).filter((item: any) => item.price !== null);
-
+      // Yahoo Finance removed as per user request
       const responseData = {
         status: "success",
-        symbol: symbol,
+        symbol: "NIFTYBEES.NS",
         company: "NIFTYBEES",
-        lastPrice: result.meta.regularMarketPrice,
-        currency: result.meta.currency,
-        history: items
+        lastPrice: 0,
+        currency: "INR",
+        history: []
       };
 
       benchmarkCache = { data: responseData, timestamp: Date.now() };

@@ -21,7 +21,7 @@ import * as XLSX from 'xlsx';
 
 // --- Firebase Imports ---
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { doc, setDoc, deleteDoc, collection, onSnapshot, query, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, onSnapshot, query, orderBy, getDocs, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 import { FilingsDashboard } from './components/FilingsDashboard';
@@ -29,6 +29,11 @@ import { GeminiChatbot } from './components/GeminiChatbot';
 import { AddTickerFeature } from './components/AddTickerFeature';
 
 // --- Error Handling & Toast Imports ---
+import { Chart as ChartJS, ArcElement, Tooltip as ChartTooltip, Legend as ChartLegend } from 'chart.js';
+import { Pie as ChartPie } from 'react-chartjs-2';
+
+ChartJS.register(ArcElement, ChartTooltip, ChartLegend);
+
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider, useToasts } from './context/ToastContext';
 import Footer from './components/Footer';
@@ -2105,6 +2110,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [editingHolding, setEditingHolding] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasAutoRefreshed = useRef(false);
@@ -2344,39 +2350,39 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
         }
       }
 
-      // Step 4: Yahoo Finance for Manual Equities
-      const manualEquitiesToUpdate = workingHoldings.filter(h => h.type === 'EQUITY' && !h.symboltoken);
-      let yahooUpdateCount = 0;
-      
-      if (manualEquitiesToUpdate.length > 0) {
-        addToast("Yahoo Finance Sync", `Fetching live prices for ${manualEquitiesToUpdate.length} manual equities...`, "info");
+      // Step 4: Fetch manual equity prices from Google Sheet
+      const manualEquities = workingHoldings.filter(h => h.type === 'EQUITY' && !h.symboltoken);
+      let sheetUpdateCount = 0;
+      if (manualEquities.length > 0) {
         try {
-          const symbols = manualEquitiesToUpdate.map(h => h.name).join(',');
-          const res = await fetch(`/api/yahoo/quote?symbols=${encodeURIComponent(symbols)}`);
-          if (res.ok) {
-            const data = await res.json();
-            const results = data.quoteResponse?.result || [];
-            
-            for (const item of results) {
-               const holding = manualEquitiesToUpdate.find(h => h.name === item.symbol);
-               if (holding && item.regularMarketPrice > 0) {
-                 await onSaveHolding({
-                   ...holding,
-                   ltp: item.regularMarketPrice,
-                   pClose: item.regularMarketPreviousClose,
-                   isAiVerified: false,
-                   updatedAt: new Date().toISOString()
-                 });
-                 yahooUpdateCount++;
-               }
+          const res = await fetch('https://docs.google.com/spreadsheets/d/1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o/export?format=csv');
+          const csvText = await res.text();
+          const lines = csvText.split('\n').filter(line => line.trim().length > 0);
+          const parsed = lines.slice(1).map(line => {
+            const cols = line.split(',');
+            const symbol = cols[0];
+            const ltpStr = cols[cols.length - 1]; // LTP is the last column
+            return { symbol, ltp: parseFloat(ltpStr) || 0 };
+          });
+
+          for (const eq of manualEquities) {
+            const matched = parsed.find(p => p.symbol.toUpperCase() === eq.name.toUpperCase());
+            if (matched && matched.ltp > 0 && matched.ltp !== eq.ltp) {
+              await onSaveHolding({
+                ...eq,
+                ltp: matched.ltp,
+                isAiVerified: false,
+                updatedAt: new Date().toISOString()
+              });
+              sheetUpdateCount++;
             }
           }
-        } catch (err) {
-          console.error("Yahoo fetch failed", err);
+        } catch (e) {
+          console.error("Failed to fetch sheet prices", e);
         }
       }
-
-      const totalUpdated = apiUpdateCount + (sgbsToUpdate.length > 0 ? sgbsToUpdate.length : 0) + yahooUpdateCount;
+      
+      const totalUpdated = apiUpdateCount + (sgbsToUpdate.length > 0 ? sgbsToUpdate.length : 0) + sheetUpdateCount;
       addToast("Portfolio Updated", `Synced ${totalUpdated} assets using API and AI intelligence.`, "success");
     } catch (err) {
       console.error(err);
@@ -2748,6 +2754,54 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
     );
   };
 
+  const visibleData = [...apiData, ...(showManualTickers ? manualData : [])];
+
+  const prepareChartData = (dataKey: 'inv' | 'cur', total: number) => {
+    if (total === 0) return { labels: [], data: [], colors: [] };
+    
+    const sorted = [...visibleData].sort((a, b) => {
+      const valA = a[dataKey] || 0;
+      const valB = b[dataKey] || 0;
+      return valB - valA;
+    });
+
+    let otherVal = 0;
+    const labels: string[] = [];
+    const chartVals: number[] = [];
+    const colors: string[] = [];
+    
+    let chartIndex = 0;
+    sorted.forEach((h, i) => {
+      const val = h[dataKey] || 0;
+      const pct = total > 0 ? (val / total) * 100 : 0;
+      
+      if (i >= 7 || pct < 2) {
+        otherVal += val;
+      } else {
+        const displayName = h.name.replace('.NS', '').replace('.BO', '');
+        labels.push(`${displayName} (${pct.toFixed(1)}%)`);
+        chartVals.push(val);
+        colors.push(`hsl(${(chartIndex * 137.5) % 360}, 75%, 60%)`);
+        chartIndex++;
+      }
+    });
+
+    if (otherVal > 0) {
+      const pct = (otherVal / total) * 100;
+      labels.push(`Others (${pct.toFixed(1)}%)`);
+      chartVals.push(otherVal);
+      colors.push('#94a3b8');
+    }
+
+    return { labels, data: chartVals, colors };
+  };
+
+  const totalInvestedChart = visibleData.reduce((sum, h) => sum + (h.inv || 0), 0);
+  const totalMarketChart = visibleData.reduce((sum, h) => sum + (h.cur || 0), 0);
+
+  const invChartData = prepareChartData('inv', totalInvestedChart);
+  const mktChartData = prepareChartData('cur', totalMarketChart);
+
   return (
     <div 
       className="bg-white/40 dark:bg-[#0d0d0d]/40 backdrop-blur-xl rounded-[2rem] p-6 md:p-8 overflow-visible mt-8 border border-white/20 dark:border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] focus:outline-none focus:ring-4 focus:ring-brand/10 transition-all duration-500 relative"
@@ -2812,6 +2866,21 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
            
            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800 hidden sm:block" />
 
+           <div className="flex bg-slate-100 dark:bg-zinc-800/80 p-1 rounded-xl">
+             <button 
+               onClick={() => setViewMode('table')}
+               className={`px-3 py-1.5 text-[10px] md:text-xs font-black tracking-wider uppercase rounded-lg transition-all ${viewMode === 'table' ? 'bg-white dark:bg-zinc-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
+             >
+               Table View
+             </button>
+             <button 
+               onClick={() => setViewMode('chart')}
+               className={`px-3 py-1.5 text-[10px] md:text-xs font-black tracking-wider uppercase rounded-lg transition-all ${viewMode === 'chart' ? 'bg-white dark:bg-zinc-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
+             >
+               Chart View
+             </button>
+           </div>
+
            <AddTickerFeature user={user} holdings={holdings} onSaveHolding={onSaveHolding} />
 
            <button 
@@ -2826,8 +2895,102 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
       </div>
 
       <div className="overflow-x-auto hide-scrollbar relative z-0">
-        <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px]">
-          <thead>
+        {viewMode === 'chart' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 py-8 animate-in fade-in zoom-in duration-500">
+            <div className="bg-white/50 dark:bg-zinc-900/50 p-6 md:p-8 rounded-[2rem] border border-white/20 dark:border-white/5 shadow-xl flex flex-col items-center justify-center transform transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:bg-white/60 dark:hover:bg-zinc-800/60 group">
+              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 border-brand/30 pb-2 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-brand" /> Invested Allocation</h4>
+              <div className="w-full max-w-[320px] aspect-square relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)]">
+                {invChartData.data.length > 0 ? (
+                <ChartPie 
+                  data={{
+                    labels: invChartData.labels,
+                    datasets: [{
+                      data: invChartData.data,
+                      backgroundColor: invChartData.colors,
+                      borderWidth: 2,
+                      borderColor: 'rgba(255, 255, 255, 0.1)',
+                      hoverOffset: 10,
+                    }]
+                  }}
+                  options={{
+                    plugins: { 
+                      legend: { 
+                        display: true, 
+                        position: 'bottom',
+                        labels: { 
+                          padding: 20, 
+                          usePointStyle: true, 
+                          pointStyle: 'circle',
+                          font: { family: 'Inter', size: 10, weight: 'bold' } 
+                        } 
+                      },
+                      tooltip: {
+                         backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                         titleFont: { size: 13, family: 'Inter' },
+                         bodyFont: { size: 12, family: 'Inter' },
+                         padding: 12,
+                         cornerRadius: 8,
+                         displayColors: true,
+                      }
+                    },
+                    maintainAspectRatio: true,
+                    cutout: '50%',
+                    layout: { padding: 10 }
+                  }}
+                />) : (
+                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No investment data available</div>
+                )}
+              </div>
+            </div>
+            <div className="bg-white/50 dark:bg-zinc-900/50 p-6 md:p-8 rounded-[2rem] border border-white/20 dark:border-white/5 shadow-xl flex flex-col items-center justify-center transform transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:bg-white/60 dark:hover:bg-zinc-800/60 group">
+              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 border-emerald-500/30 pb-2 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Market Value Allocation</h4>
+              <div className="w-full max-w-[320px] aspect-square relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)]">
+                {mktChartData.data.length > 0 ? (
+                <ChartPie 
+                  data={{
+                    labels: mktChartData.labels,
+                    datasets: [{
+                      data: mktChartData.data,
+                      backgroundColor: mktChartData.colors,
+                      borderWidth: 2,
+                      borderColor: 'rgba(255, 255, 255, 0.1)',
+                      hoverOffset: 10,
+                    }]
+                  }}
+                  options={{
+                    plugins: { 
+                      legend: { 
+                        display: true, 
+                        position: 'bottom',
+                        labels: { 
+                          padding: 20, 
+                          usePointStyle: true, 
+                          pointStyle: 'circle',
+                          font: { family: 'Inter', size: 10, weight: 'bold' } 
+                        } 
+                      },
+                      tooltip: {
+                         backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                         titleFont: { size: 13, family: 'Inter' },
+                         bodyFont: { size: 12, family: 'Inter' },
+                         padding: 12,
+                         cornerRadius: 8,
+                         displayColors: true,
+                      }
+                    },
+                    maintainAspectRatio: true,
+                    cutout: '50%',
+                    layout: { padding: 10 }
+                  }}
+                />) : (
+                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No market data available</div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px] animate-in fade-in zoom-in duration-500">
+            <thead>
             <tr className="uppercase text-[9px] font-black tracking-[0.2em] text-slate-400 select-none">
               <th className={`px-6 py-4 cursor-pointer rounded-l-2xl transition-all duration-500 group/th ${sortConfig.key === 'name' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('name')}>
                 <div className="flex items-center gap-1.5">
@@ -2951,6 +3114,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
             </AnimatePresence>
           </tbody>
         </table>
+        )}
       </div>
       <ManualSgbModal 
         isOpen={isManualModalOpen} 
@@ -3257,22 +3421,19 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const apiSummaryPath = doc(db, 'artifacts', appId, 'users', user.uid, 'api_summary', 'holdings');
     const holdingsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'holdings');
 
-    const unsubTxns = onSnapshot(txnsPath, (snapshot) => {
+    const unsubTxns = onSnapshot(query(txnsPath, orderBy('date', 'asc')), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setTransactions([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], deposit: '', withdrawal: '' }]);
+      setTransactions([...data, { id: generateId(), date: new Date().toISOString().split('T')[0], deposit: '', withdrawal: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, txnsPath.path));
 
-    const unsubHist = onSnapshot(histPath, (snapshot) => {
+    const unsubHist = onSnapshot(query(histPath, orderBy('date', 'asc')), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setPortfolioHistory([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], marketValue: '' }]);
+      setPortfolioHistory([...data, { id: generateId(), date: new Date().toISOString().split('T')[0], marketValue: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, histPath.path));
 
-    const unsubBench = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'benchmark'), (snapshot) => {
+    const unsubBench = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'benchmark'), orderBy('date', 'asc')), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      const sorted = data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setBenchmarkHistory([...sorted, { id: generateId(), date: new Date().toISOString().split('T')[0], price: '' }]);
+      setBenchmarkHistory([...data, { id: generateId(), date: new Date().toISOString().split('T')[0], price: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, `artifacts/${appId}/users/${user.uid}/benchmark`));
 
     const unsubPrompts = onSnapshot(promptsPath, (snapshot) => {
@@ -3287,7 +3448,8 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
     const unsubApiTrades = onSnapshot(apiTradesPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      setApiTrades(data.sort((a, b) => new Date(b.filltime || b.updatetime || 0).getTime() - new Date(a.filltime || a.updatetime || 0).getTime()));
+      data.forEach(item => { item._time = new Date(item.filltime || item.updatetime || 0).getTime(); });
+      setApiTrades(data.sort((a, b) => b._time - a._time));
     }, (error) => handleFirestoreError(error, OperationType.LIST, apiTradesPath.path));
 
     const unsubApiSummary = onSnapshot(apiSummaryPath, (snapshot) => {
@@ -3613,12 +3775,14 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     }
   };
 
-  const validTxns = useMemo(() => transactions.filter(t => t.date && (t.deposit !== '' || t.withdrawal !== '') && (angelOneEnabled || !t.id?.startsWith('api_'))).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [transactions, angelOneEnabled]);
-  const validHistory = useMemo(() => portfolioHistory.filter(p => p.date && p.marketValue !== '' && (angelOneEnabled || !p.id?.startsWith('api_'))).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [portfolioHistory, angelOneEnabled]);
+  const validTxns = useMemo(() => {
+    return transactions.filter(t => t.date && (t.deposit !== '' || t.withdrawal !== '') && (angelOneEnabled || !t.id?.startsWith('api_')));
+  }, [transactions, angelOneEnabled]);
+  const validHistory = useMemo(() => {
+    return portfolioHistory.filter(p => p.date && p.marketValue !== '' && (angelOneEnabled || !p.id?.startsWith('api_')));
+  }, [portfolioHistory, angelOneEnabled]);
   const validBench = useMemo(() => {
-    return benchmarkHistory
-      .filter(b => b.date && (b.price !== '' && b.price !== null))
-      .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return benchmarkHistory.filter(b => b.date && (b.price !== '' && b.price !== null));
   }, [benchmarkHistory]);
   const validPrompts = useMemo(() => {
     return prompts
