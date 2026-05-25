@@ -23,7 +23,14 @@ export function AddTickerFeature({
   const { addToast } = useToasts();
   const searchTimeout = useRef<any>(null);
 
+  const [localTickers, setLocalTickers] = useState<any[]>([]);
+
   useEffect(() => {
+    fetch('/nse_tickers.json')
+      .then(res => res.json())
+      .then(data => setLocalTickers(data))
+      .catch(err => console.error('Failed to load local tickers', err));
+
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsOpen(false);
@@ -39,6 +46,20 @@ export function AddTickerFeature({
       return;
     }
     setIsLoading(true);
+    
+    // Efficient Local Search first
+    const qUpper = q.toUpperCase();
+    const exactLocalMatches = localTickers.filter(t => 
+      t.symbol.toUpperCase().startsWith(qUpper) || 
+      t.shortname?.toUpperCase().includes(qUpper)
+    ).slice(0, 8);
+
+    if (exactLocalMatches.length >= 4) {
+      setResults(exactLocalMatches);
+      setIsLoading(false);
+      return; // Fast path!
+    }
+
     try {
       const res = await fetch(`/api/yahoo/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
@@ -47,10 +68,17 @@ export function AddTickerFeature({
         let quotes = data.quotes.filter((q: any) => q.quoteType === 'EQUITY' || q.quoteType === 'ETF');
         const indianQuotes = quotes.filter((q: any) => q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'));
         const otherQuotes = quotes.filter((q: any) => !q.symbol.endsWith('.NS') && !q.symbol.endsWith('.BO'));
-        setResults([...indianQuotes, ...otherQuotes].slice(0, 8));
+        
+        // Merge local matches with remote matches and deduplicate
+        const merged = [...exactLocalMatches, ...indianQuotes, ...otherQuotes];
+        const unique = Array.from(new Map(merged.map(item => [item.symbol, item])).values());
+        
+        setResults(unique.slice(0, 8));
       }
     } catch (err: any) {
       console.error(err);
+      // Fallback completely to local if API fails
+      setResults(exactLocalMatches);
     } finally {
       setIsLoading(false);
     }

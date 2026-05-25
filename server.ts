@@ -6,7 +6,7 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { TOTP } from "totp-generator";
 import pkg from 'yahoo-finance2';
-const YahooFinance = pkg.default || pkg;
+const YahooFinance = (pkg as any).default || pkg;
 const yahooFinance = new (YahooFinance as any)({ suppressNotices: ['yahooSurvey'] });
 
 // In CJS bundle (production), __dirname and require are already defined.
