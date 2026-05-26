@@ -39,7 +39,7 @@ const Footer = () => {
             </div>
             <div className="flex flex-col items-start gap-5">
               <a 
-                href="/app-release.apk" 
+                href="https://drive.google.com/uc?export=download&id=14eFa0zneSHnSfZjnUTkG7bl_vhfO2dDN" 
                 download
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand text-white rounded-xl font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand/20 hover:shadow-brand/40"
               >
