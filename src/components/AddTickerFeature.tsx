@@ -27,7 +27,7 @@ export function AddTickerFeature({
 
   useEffect(() => {
     // Fetch from Google Sheet exclusively for company/ticker search and market prices
-    fetch('/api/sheets?id=1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o')
+    fetch('https://docs.google.com/spreadsheets/d/1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o/export?format=csv')
       .then(res => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.text();

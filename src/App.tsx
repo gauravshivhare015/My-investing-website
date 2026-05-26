@@ -2368,7 +2368,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
       let sheetUpdateCount = 0;
       if (manualEquities.length > 0) {
         try {
-          const res = await fetch('/api/sheets?id=1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o');
+          const res = await fetch('https://docs.google.com/spreadsheets/d/1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o/export?format=csv');
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           const csvText = await res.text();
           const lines = csvText.split('\n').filter(line => line.trim().length > 0);
