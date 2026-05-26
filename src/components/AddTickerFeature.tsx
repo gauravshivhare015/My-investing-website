@@ -28,26 +28,38 @@ export function AddTickerFeature({
   useEffect(() => {
     // Fetch from Google Sheet exclusively for company/ticker search and market prices
     fetch('/api/sheets?id=1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o')
-      .then(res => res.text())
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.text();
+      })
       .then(csvText => {
         const lines = csvText.split('\n').filter(line => line.trim().length > 0);
-        const parsed = lines.slice(1).map(line => {
-          // split by comma, ignoring internal commas inside names assuming simple structure
-          const cols = line.split(',');
-          const symbol = cols[0];
-          const name = cols[1];
-          const ltpStr = cols[cols.length - 1]; // LTP is the last column
-          return {
-            symbol: symbol,
-            shortname: name,
-            longname: name,
-            ltp: parseFloat(ltpStr) || 0,
-            exchDisp: 'NSE'
-          };
-        }).filter(t => t.symbol);
-        setLocalTickers(parsed);
+        if (lines.length > 0) {
+          const headers = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim().toUpperCase());
+          const symbolIdx = headers.indexOf('SYMBOL') > -1 ? headers.indexOf('SYMBOL') : 0;
+          const nameIdx = headers.indexOf('NAME') > -1 ? headers.indexOf('NAME') : 1;
+          const ltpIdx = headers.indexOf('LTP') > -1 ? headers.indexOf('LTP') : headers.length - 1;
+
+          const parsed = lines.slice(1).map(line => {
+            const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim());
+            const symbol = cols[symbolIdx] || '';
+            const name = cols[nameIdx] || '';
+            const ltpStr = (cols[ltpIdx] || '').replace(/[^\d.-]/g, '');
+            return {
+              symbol: symbol,
+              shortname: name,
+              longname: name,
+              ltp: parseFloat(ltpStr) || 0,
+              exchDisp: 'NSE'
+            };
+          }).filter(t => t.symbol);
+          setLocalTickers(parsed);
+        }
       })
-      .catch(err => console.error('Failed to load tickers from Google Sheets', err));
+      .catch(err => {
+        console.error('Failed to load tickers from Google Sheets', err);
+        addToast("Sync Error", "Could not fetch ticker list from Sheets. You can still enter tickers manually.", "warning");
+      });
 
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {

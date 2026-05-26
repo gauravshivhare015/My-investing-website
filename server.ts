@@ -529,13 +529,12 @@ async function startServer() {
       const { id } = req.query;
       if (!id) return res.status(400).json({ error: "Missing sheet id" });
       const url = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv`;
-      const docRes = await fetch(url);
-      if (!docRes.ok) throw new Error(`Google Sheets responded with ${docRes.status}`);
-      const csvText = await docRes.text();
+      const axios = (await import("axios")).default;
+      const docRes = await axios.get(url, { responseType: 'text' });
       res.setHeader("Content-Type", "text/csv");
-      res.send(csvText);
+      res.send(docRes.data);
     } catch (err: any) {
-      console.error("Sheets proxy error:", err);
+      console.error("Sheets proxy error:", err.message);
       res.status(500).json({ error: "Failed to fetch from Google Sheets", details: err.message });
     }
   });

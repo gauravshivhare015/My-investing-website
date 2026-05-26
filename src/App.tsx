@@ -2369,25 +2369,32 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
       if (manualEquities.length > 0) {
         try {
           const res = await fetch('/api/sheets?id=1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o');
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           const csvText = await res.text();
           const lines = csvText.split('\n').filter(line => line.trim().length > 0);
-          const parsed = lines.slice(1).map(line => {
-            const cols = line.split(',');
-            const symbol = cols[0];
-            const ltpStr = cols[cols.length - 1]; // LTP is the last column
-            return { symbol, ltp: parseFloat(ltpStr) || 0 };
-          });
+          if (lines.length > 0) {
+            const headers = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim().toUpperCase());
+            const symbolIdx = headers.indexOf('SYMBOL') > -1 ? headers.indexOf('SYMBOL') : 0;
+            const ltpIdx = headers.indexOf('LTP') > -1 ? headers.indexOf('LTP') : headers.length - 1;
+            
+            const parsed = lines.slice(1).map(line => {
+              const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim());
+              const symbol = cols[symbolIdx] || '';
+              const ltpStr = (cols[ltpIdx] || '').replace(/[^\d.-]/g, '');
+              return { symbol, ltp: parseFloat(ltpStr) || 0 };
+            }).filter(p => p.symbol && p.ltp > 0);
 
-          for (const eq of manualEquities) {
-            const matched = parsed.find(p => p.symbol.toUpperCase() === eq.name.toUpperCase());
-            if (matched && matched.ltp > 0 && matched.ltp !== eq.ltp) {
-              await onSaveHolding({
-                ...eq,
-                ltp: matched.ltp,
-                isAiVerified: false,
-                updatedAt: new Date().toISOString()
-              });
-              sheetUpdateCount++;
+            for (const eq of manualEquities) {
+              const matched = parsed.find(p => p.symbol.toUpperCase() === eq.name.toUpperCase());
+              if (matched && matched.ltp !== eq.ltp) {
+                await onSaveHolding({
+                  ...eq,
+                  ltp: matched.ltp,
+                  isAiVerified: false,
+                  updatedAt: new Date().toISOString()
+                });
+                sheetUpdateCount++;
+              }
             }
           }
         } catch (e) {
