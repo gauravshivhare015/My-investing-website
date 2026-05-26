@@ -4319,15 +4319,27 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 {files.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                     {files.map(f => (
-                      <a key={f.id} href={f.data} download={f.name} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-black/5 dark:border-white/5 shadow-lg hover:border-brand/30 transition-all group flex items-center gap-4 cursor-pointer">
-                        <div className="p-3 bg-black/5 dark:bg-white/5 rounded-xl group-hover:bg-brand/10 transition-colors">
-                          {f.type.includes('pdf') ? <FileText size={24} className="text-rose-500"/> : <ImageIcon size={24} className="text-brand"/>}
-                        </div>
-                        <div className="overflow-hidden">
-                          <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{f.name}</h4>
-                          <p className="text-xs text-zinc-500">{(f.size / 1024).toFixed(1)} KB • {formatDateToDDMMYYYY(f.uploadedAt)}</p>
-                        </div>
-                      </a>
+                      <div key={f.id} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 shadow-lg group relative flex items-center justify-between transition-all hover:border-brand/30">
+                        <a href={f.data} download={f.name} className="flex-1 p-5 rounded-l-2xl flex items-center gap-4 cursor-pointer overflow-hidden">
+                          <div className="p-3 bg-black/5 dark:bg-white/5 rounded-xl group-hover:bg-brand/10 transition-colors shrink-0">
+                            {f.type.includes('pdf') ? <FileText size={24} className="text-rose-500"/> : <ImageIcon size={24} className="text-brand"/>}
+                          </div>
+                          <div className="overflow-hidden">
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{f.name}</h4>
+                            <p className="text-xs text-zinc-500">{(f.size / 1024).toFixed(1)} KB • {formatDateToDDMMYYYY(f.uploadedAt)}</p>
+                          </div>
+                        </a>
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            deleteCloudDoc('files', f.id);
+                          }}
+                          className="p-5 text-zinc-400 hover:text-brand transition-colors cursor-pointer flex items-center justify-center"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
                     ))}
                     <button onClick={() => documentFileInputRef.current?.click()} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-dashed border-black/10 dark:border-white/10 transition-all hover:border-brand/30 hover:bg-brand/5 group flex items-center justify-center gap-4 cursor-pointer min-h-[90px]">
                       <div className="flex items-center gap-3 text-zinc-500 group-hover:text-brand transition-colors">
