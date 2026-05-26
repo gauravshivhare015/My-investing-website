@@ -1,6 +1,12 @@
 import React from 'react';
-import { Mail, MessageSquare, Bug, Youtube, Twitter, ShieldAlert, ExternalLink } from 'lucide-react';
+import { Mail, MessageSquare, Bug, Youtube, ShieldAlert, ExternalLink, Download } from 'lucide-react';
 import { motion } from 'motion/react';
+
+const XIcon = ({ size = 18 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+  </svg>
+);
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -11,8 +17,8 @@ const Footer = () => {
   };
 
   const socialLinks = [
-    { name: 'Twitter', icon: <Twitter size={18} />, href: 'https://twitter.com/gauravshivhare' },
-    { name: 'YouTube', icon: <Youtube size={18} />, href: 'https://youtube.com/@gauravshivhare' },
+    { name: 'X', icon: <XIcon size={18} />, href: 'https://x.com/Wellverse_' },
+    { name: 'YouTube', icon: <Youtube size={18} />, href: 'https://www.youtube.com/@gauravshivhare015' },
   ];
 
   return (
@@ -31,9 +37,18 @@ const Footer = () => {
                 Empowering your financial journey with AI-driven market intelligence and real-time portfolio tracking.
               </p>
             </div>
-            <div className="flex items-center gap-4">
-              {socialLinks.map((social) => (
-                <motion.a
+            <div className="flex flex-col items-start gap-5">
+              <a 
+                href="/app-release.apk" 
+                download
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand text-white rounded-xl font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand/20 hover:shadow-brand/40"
+              >
+                <Download size={18} className="animate-bounce" />
+                <span>Download Android App</span>
+              </a>
+              <div className="flex items-center gap-4">
+                {socialLinks.map((social) => (
+                  <motion.a
                   key={social.name}
                   href={social.href}
                   target="_blank"
@@ -45,6 +60,7 @@ const Footer = () => {
                   {social.icon}
                 </motion.a>
               ))}
+              </div>
             </div>
           </div>
 
