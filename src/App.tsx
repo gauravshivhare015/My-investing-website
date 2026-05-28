@@ -1686,10 +1686,10 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
                       <button
                         type="button"
                         onClick={() => setShowDeleteConfirm(true)}
-                        className="flex-shrink-0 px-4 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-rose-500 bg-rose-500/10 hover:bg-rose-500 hover:text-white transition-colors"
+                        className="group flex-shrink-0 px-4 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-rose-500 bg-rose-500/10 hover:bg-rose-500 hover:text-white transition-colors"
                         title="Delete Holding"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={16} className="group-hover:animate-shake" />
                       </button>
                       <button
                         type="button"
@@ -4335,7 +4335,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                             e.stopPropagation();
                             deleteCloudDoc('files', f.id);
                           }}
-                          className="p-5 text-zinc-400 hover:text-brand transition-colors cursor-pointer flex items-center justify-center"
+                          className="opacity-0 group-hover:opacity-100 p-5 text-zinc-400 hover:text-brand transition-all cursor-pointer flex items-center justify-center"
                         >
                           <Trash2 size={20} />
                         </button>
@@ -4713,7 +4713,7 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                 : 'bg-black/5 dark:bg-white/5 border-transparent text-zinc-500 opacity-40 cursor-not-allowed grayscale'
             }`}
           >
-            <Trash2 size={12} className={selectedIds.length > 0 ? "group-hover:scale-110 transition-transform" : ""} />
+            <Trash2 size={12} className={selectedIds.length > 0 ? "group-hover:animate-shake" : ""} />
             <span className="text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase">
               {selectedIds.length > 0 ? `DELETE (${selectedIds.length})` : 'BULK DELETE'}
             </span>
@@ -4808,9 +4808,9 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                     ) : (
                       <button 
                         onClick={() => setShowClearConfirm(true)}
-                        className="w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between text-rose-500 hover:bg-rose-500/10 transition-colors"
+                        className="group w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between text-rose-500 hover:bg-rose-500/10 transition-colors"
                       >
-                        CLEAR ALL DATA <Trash2 size={12} />
+                        CLEAR ALL DATA <Trash2 size={12} className="group-hover:animate-shake" />
                       </button>
                     )}
                   </div>
@@ -5062,10 +5062,10 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                       {!isReadOnly ? (
                         <button 
                           onClick={() => onDelete(row.id)} 
-                          className="w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all flex items-center justify-center"
+                          className="group w-full h-full p-3 md:p-4 text-zinc-700 dark:text-zinc-600 hover:text-rose-500 transition-all flex items-center justify-center"
                           title="Delete historical record"
                         >
-                          <Trash2 size={16}/>
+                          <Trash2 size={16} className="group-hover:animate-shake" />
                         </button>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-zinc-500/20">
