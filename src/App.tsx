@@ -2607,6 +2607,12 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
   const apiData = isApiMode ? data.filter(h => h.symboltoken) : [];
   const manualData = isApiMode ? data.filter(h => !h.symboltoken) : data;
 
+  const displayedData = [...apiData, ...((!isApiMode || showManualTickers) ? manualData : [])];
+  const totalInvestment = displayedData.reduce((sum, h) => sum + (h.inv || 0), 0);
+  const totalValue = displayedData.reduce((sum, h) => sum + (h.cur || 0), 0);
+  const totalOverallGl = totalValue - totalInvestment;
+  const totalOverallGlPct = totalInvestment > 0 ? (totalOverallGl / totalInvestment) * 100 : 0;
+
   const renderRow = (row: any) => (
     <motion.tr 
       layout
@@ -3134,6 +3140,26 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
               {(!isApiMode || showManualTickers) && manualData.map(renderRow)}
             </AnimatePresence>
           </tbody>
+          <tfoot>
+            <tr className="bg-slate-50 dark:bg-zinc-800/50 border-t border-black/10 dark:border-white/10">
+              <td colSpan={4} className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-widest text-slate-500">
+                Total Portfolio
+              </td>
+              <td className="px-6 py-4 text-right font-mono text-[12px] text-slate-900 dark:text-white font-bold">
+                ₹{formatAmt(totalInvestment)}
+              </td>
+              <td className="px-6 py-4 text-right font-mono text-[12px] text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">
+                ₹{formatAmt(totalValue)}
+              </td>
+              <td className={`px-6 py-4 text-right font-mono text-[12px] font-bold ${totalOverallGl >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                {totalOverallGl >= 0 ? '+' : '-'}₹{formatAmt(Math.abs(totalOverallGl))}
+                <div className="text-[10px] text-slate-500 opacity-80 font-medium">
+                  {totalOverallGlPct >= 0 ? '+' : ''}{totalOverallGlPct.toFixed(2)}%
+                </div>
+              </td>
+              <td className="px-6 py-4"></td>
+            </tr>
+          </tfoot>
         </table>
         </div>
         )}
