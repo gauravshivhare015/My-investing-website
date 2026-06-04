@@ -4251,7 +4251,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="filings">
-                <FilingsDashboard brandColor={brandColor} />
+                <FilingsDashboard brandColor={brandColor} holdings={holdings} />
               </div>
 
               {angelOneEnabled && apiTrades.length > 0 && (

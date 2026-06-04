@@ -1013,6 +1013,67 @@ async function startServer() {
     }
   });
 
+  // API Route for NSE Event Calendar
+  app.get("/api/nse/calendar", async (req, res) => {
+    try {
+      const { period } = req.query;
+      let path = '/api/event-calendar';
+
+      if (period === '1M') {
+        const toDate = new Date();
+        const fromDate = new Date();
+        fromDate.setMonth(fromDate.getMonth() - 1);
+
+        const formatDt = (d: Date) => {
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${dd}-${mm}-${yyyy}`;
+        };
+
+        path = `/api/event-calendar?index=equities&from_date=${formatDt(fromDate)}&to_date=${formatDt(toDate)}`;
+      }
+
+      const https = await import('https');
+      const options = {
+        hostname: 'www.nseindia.com',
+        path: path,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Connection': 'keep-alive',
+        }
+      };
+
+      const request = https.request(options, (response) => {
+        let data = '';
+        response.on('data', chunk => data += chunk);
+        response.on('end', () => {
+          if (response.statusCode === 200) {
+            try {
+              res.json({ status: "success", data: JSON.parse(data) });
+            } catch (e: any) {
+              res.status(500).json({ error: "Failed to parse NSE data", details: e.message });
+            }
+          } else {
+            res.status(response.statusCode || 500).json({ error: "Failed to fetch from NSE", status: response.statusCode });
+          }
+        });
+      });
+      
+      request.on('error', (e) => {
+        console.error("NSE Call error:", e.message);
+        res.status(500).json({ error: "Failed to fetch from NSE", details: e.message });
+      });
+      request.end();
+    } catch (error: any) {
+      console.error("NSE Calendar error:", error.message);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  });
+
   // API Route for BSE Corporate Filings
   app.get("/api/bse/filings", async (req, res) => {
     try {
