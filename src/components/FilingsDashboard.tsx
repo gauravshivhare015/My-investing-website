@@ -9,8 +9,7 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [error, setError] = useState<string | null>(null);
-  const [investedOnly, setInvestedOnly] = useState(false);
-  const [periodFilter, setPeriodFilter] = useState('Forthcoming');
+  const [periodFilter, setPeriodFilter] = useState('1M');
 
   const fetchFilings = async () => {
     setLoading(true);
@@ -45,12 +44,11 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
   useEffect(() => {
     let result = filings;
     
-    if (investedOnly) {
-      result = result.filter(f => {
-        const fileSym = (f.symbol || '').toUpperCase().trim();
-        return investedSymbols.includes(fileSym);
-      });
-    }
+    // Always filter by Invested Tickers Only
+    result = result.filter(f => {
+      const fileSym = (f.symbol || '').toUpperCase().trim();
+      return investedSymbols.includes(fileSym);
+    });
 
     // Lightning-fast client-side filtering by multiple fields
     if (searchQuery.trim() !== '') {
@@ -68,7 +66,7 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
     }
     
     setFilteredFilings(result);
-  }, [filings, categoryFilter, searchQuery, investedOnly, investedSymbols]);
+  }, [filings, categoryFilter, searchQuery, investedSymbols]);
 
   const categories = ['All', ...Array.from(new Set(filings.map(f => f.purpose))).filter(Boolean)];
 
@@ -86,10 +84,10 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
         <div>
           <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <Calendar size={24} style={{ color: brandColor }} />
-            Event Calendar
+            Corporate Announcements
           </h2>
           <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 mt-1">
-            Latest announcements from the NSE Event Calendar
+            Latest announcements from the NSE Corporate Filings
           </p>
         </div>
         
@@ -113,17 +111,6 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
                </button>
             )}
           </div>
-          <button 
-            onClick={() => setInvestedOnly(!investedOnly)}
-            className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-xl transition-all border ${
-              investedOnly 
-                ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30' 
-                : 'bg-white dark:bg-[#1a1a1a] text-slate-600 dark:text-slate-300 border-black/10 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/[0.02]'
-            }`}
-          >
-            <Filter size={16} />
-            Invested Tickers Only
-          </button>
         </div>
       </div>
 
@@ -131,16 +118,6 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
       <div className="bg-white dark:bg-[#0a0a0a] border border-black/5 dark:border-white/5 rounded-2xl shadow-sm overflow-hidden flex flex-col">
         <div className="p-4 border-b border-black/5 dark:border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50/50 dark:bg-white/[0.02]">
           <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-lg">
-            <button
-              onClick={() => setPeriodFilter('Forthcoming')}
-              className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${
-                periodFilter === 'Forthcoming'
-                  ? 'bg-white dark:bg-[#1a1a1a] text-slate-900 dark:text-white shadow-sm'
-                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              Forthcoming
-            </button>
             <button
               onClick={() => setPeriodFilter('1M')}
               className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${
@@ -188,6 +165,7 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
                   <th className="p-4 font-bold">Purpose</th>
                   <th className="p-4 font-bold">Details</th>
                   <th className="p-4 font-bold">Date</th>
+                  <th className="p-4 font-bold text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="text-sm">
@@ -212,6 +190,19 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
                       </td>
                       <td className="p-4 text-slate-500 dark:text-zinc-400 whitespace-nowrap">
                         {dateStr}
+                      </td>
+                      <td className="p-4 text-right">
+                        {filing.pdfLink && (
+                          <a 
+                            href={filing.pdfLink} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded-lg text-xs font-bold transition-colors"
+                          >
+                            <ExternalLink size={14} />
+                            PDF
+                          </a>
+                        )}
                       </td>
                     </tr>
                   );

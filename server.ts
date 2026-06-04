@@ -1013,11 +1013,11 @@ async function startServer() {
     }
   });
 
-  // API Route for NSE Event Calendar
+  // API Route for NSE Announcements
   app.get("/api/nse/calendar", async (req, res) => {
     try {
       const { period } = req.query;
-      let path = '/api/event-calendar';
+      let path = '/api/corporate-announcements?index=equities';
 
       if (period === '1M') {
         const toDate = new Date();
@@ -1031,7 +1031,7 @@ async function startServer() {
           return `${dd}-${mm}-${yyyy}`;
         };
 
-        path = `/api/event-calendar?index=equities&from_date=${formatDt(fromDate)}&to_date=${formatDt(toDate)}`;
+        path = `/api/corporate-announcements?index=equities&from_date=${formatDt(fromDate)}&to_date=${formatDt(toDate)}`;
       }
 
       const https = await import('https');
@@ -1044,6 +1044,7 @@ async function startServer() {
           'Accept': 'application/json, text/plain, */*',
           'Accept-Language': 'en-US,en;q=0.9',
           'Connection': 'keep-alive',
+          'Referer': 'https://www.nseindia.com/companies-listing/corporate-filings-announcements'
         }
       };
 
@@ -1053,7 +1054,16 @@ async function startServer() {
         response.on('end', () => {
           if (response.statusCode === 200) {
             try {
-              res.json({ status: "success", data: JSON.parse(data) });
+              const parsed = JSON.parse(data);
+              const mappedData = (Array.isArray(parsed) ? parsed : []).map((item: any) => ({
+                symbol: item.symbol,
+                company: item.sm_name || item.symbol,
+                purpose: item.desc || 'Announcement',
+                date: item.an_dt || item.sort_date,
+                bm_desc: item.attchmntText || item.desc,
+                pdfLink: item.attchmntFile || null
+              }));
+              res.json({ status: "success", data: mappedData });
             } catch (e: any) {
               res.status(500).json({ error: "Failed to parse NSE data", details: e.message });
             }
