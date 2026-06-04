@@ -2620,11 +2620,16 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.2 } }}
+      whileHover={{
+        scale: 1.01,
+        y: -1,
+        boxShadow: `0 8px 30px -10px ${brandColor}80, 0 0 0 1.5px ${brandColor}`,
+      }}
       transition={{ 
-        layout: { type: "spring", stiffness: 200, damping: 25 },
+        layout: { type: "spring", stiffness: 350, damping: 30 },
         opacity: { duration: 0.3 }
       }}
-      className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-all duration-300 ring-1 hover:ring-brand/30 rounded-2xl overflow-hidden`}
+      className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-colors duration-300 ring-1 rounded-2xl overflow-hidden`}
     >
       <td className="px-6 py-5 first:rounded-l-2xl group/td-name relative">
         {row.type === 'SGB' && (
@@ -2782,51 +2787,45 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
 
   const visibleData = [...apiData, ...(showManualTickers ? manualData : [])];
 
-  const prepareChartData = (dataKey: 'inv' | 'cur', total: number) => {
-    if (total === 0) return { labels: [], data: [], colors: [] };
-    
-    const sorted = [...visibleData].sort((a, b) => {
-      const valA = a[dataKey] || 0;
-      const valB = b[dataKey] || 0;
-      return valB - valA;
-    });
-
-    let otherVal = 0;
-    const labels: string[] = [];
-    const chartVals: number[] = [];
-    const colors: string[] = [];
-    
-    let chartIndex = 0;
-    sorted.forEach((h, i) => {
-      const val = h[dataKey] || 0;
-      const pct = total > 0 ? (val / total) * 100 : 0;
-      
-      if (i >= 7 || pct < 2) {
-        otherVal += val;
-      } else {
-        const displayName = h.name.replace('.NS', '').replace('.BO', '');
-        labels.push(`${displayName} (${pct.toFixed(1)}%)`);
-        chartVals.push(val);
-        colors.push(`hsl(${(chartIndex * 137.5) % 360}, 75%, 60%)`);
-        chartIndex++;
-      }
-    });
-
-    if (otherVal > 0) {
-      const pct = (otherVal / total) * 100;
-      labels.push(`Others (${pct.toFixed(1)}%)`);
-      chartVals.push(otherVal);
-      colors.push('#94a3b8');
-    }
-
-    return { labels, data: chartVals, colors };
-  };
-
   const totalInvestedChart = visibleData.reduce((sum, h) => sum + (h.inv || 0), 0);
   const totalMarketChart = visibleData.reduce((sum, h) => sum + (h.cur || 0), 0);
 
-  const invChartData = prepareChartData('inv', totalInvestedChart);
-  const mktChartData = prepareChartData('cur', totalMarketChart);
+  const prepareStackedChartData = () => {
+    const totalInv = totalInvestedChart;
+    const totalMkt = totalMarketChart;
+
+    if (totalInv === 0 && totalMkt === 0) return { labels: [], datasets: [] };
+
+    // Sort by market value consistently to decide top stocks vs 'Others'
+    const sorted = [...visibleData].sort((a, b) => (b.cur || 0) - (a.cur || 0));
+
+    const datasets: any[] = [];
+    
+    let chartIndex = 0;
+    sorted.forEach((h, i) => {
+      const invVal = h.inv || 0;
+      const mktVal = h.cur || 0;
+      const invPct = totalInv > 0 ? (invVal / totalInv) * 100 : 0;
+      const mktPct = totalMkt > 0 ? (mktVal / totalMkt) * 100 : 0;
+      
+      const displayName = h.name.replace('.NS', '').replace('.BO', '');
+      datasets.push({
+        label: displayName,
+        data: [invPct, mktPct], // Index 0: Invested, Index 1: Market
+        backgroundColor: `hsl(${(chartIndex * 137.5) % 360}, 75%, 60%)`,
+        borderWidth: 0,
+        borderRadius: 0,
+      });
+      chartIndex++;
+    });
+
+    return {
+      labels: ['Invested Allocation', 'Market Value Allocation'],
+      datasets,
+    };
+  };
+
+  const stackedData = prepareStackedChartData();
 
   return (
     <div 
@@ -2918,35 +2917,29 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
 
       <div className="overflow-x-auto hide-scrollbar relative z-0">
         {viewMode === 'chart' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 py-8 animate-in fade-in zoom-in duration-500">
-            <div className="bg-white/50 dark:bg-zinc-900/50 p-6 md:p-8 rounded-[2rem] border border-white/20 dark:border-white/5 shadow-xl flex flex-col items-center justify-center transform transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:bg-white/60 dark:hover:bg-zinc-800/60 group">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 border-indigo-500/30 dark:border-indigo-400/30 pb-2 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500 dark:bg-indigo-400" /> Invested Allocation</h4>
-              <div className="w-full max-w-[320px] aspect-square relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)] flex items-center justify-center">
+          <div className="py-8 animate-in fade-in zoom-in duration-500">
+            <div className="bg-white/50 dark:bg-zinc-900/50 p-6 md:p-8 rounded-[2rem] border border-white/20 dark:border-white/5 shadow-xl flex flex-col justify-center transform transition-all duration-300 hover:shadow-2xl hover:bg-white/60 dark:hover:bg-zinc-800/60 group w-full max-w-4xl mx-auto">
+              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 pb-2 flex items-center justify-center gap-2" style={{ borderBottomColor: `${brandColor}4D` }}>
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: brandColor }} />
+                Portfolio Allocation
+              </h4>
+              <div className="w-full h-[180px] relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)]">
                 {isLoading ? (
-                  <div className="w-[80%] h-[80%] rounded-full border-[30px] border-slate-200 dark:border-white/10 animate-pulse" />
-                ) : invChartData.data.length > 0 ? (
-                <ChartPie 
-                  data={{
-                    labels: invChartData.labels,
-                    datasets: [{
-                      data: invChartData.data,
-                      backgroundColor: invChartData.colors,
-                      borderWidth: 2,
-                      borderColor: 'rgba(255, 255, 255, 0.1)',
-                      hoverOffset: 10,
-                    }]
-                  }}
+                  <div className="w-full h-full rounded-xl bg-slate-100 dark:bg-white/5 animate-pulse" />
+                ) : stackedData.datasets.length > 0 ? (
+                <ChartJSBar 
+                  data={stackedData}
                   options={{
+                    indexAxis: 'y' as const,
                     plugins: { 
                       legend: { 
-                        display: true, 
+                        display: true,
                         position: 'bottom',
-                        labels: { 
-                          padding: 20, 
-                          usePointStyle: true, 
-                          pointStyle: 'circle',
-                          font: { family: 'Inter', size: 10, weight: 'bold' } 
-                        } 
+                        labels: {
+                          usePointStyle: true,
+                          boxWidth: 8,
+                          font: { family: 'Inter', size: 10, weight: 'bold' }
+                        }
                       },
                       tooltip: {
                          backgroundColor: 'rgba(15, 23, 42, 0.9)',
@@ -2955,61 +2948,35 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
                          padding: 12,
                          cornerRadius: 8,
                          displayColors: true,
+                         callbacks: {
+                           label: (context: any) => `${context.dataset.label}: ${context.parsed.x.toFixed(1)}%`
+                         }
                       }
                     },
-                    maintainAspectRatio: true,
-                    cutout: '50%',
-                    layout: { padding: 10 }
-                  }}
-                />) : (
-                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No investment data available</div>
-                )}
-              </div>
-            </div>
-            <div className="bg-white/50 dark:bg-zinc-900/50 p-6 md:p-8 rounded-[2rem] border border-white/20 dark:border-white/5 shadow-xl flex flex-col items-center justify-center transform transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:bg-white/60 dark:hover:bg-zinc-800/60 group">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 pb-2 flex items-center gap-2" style={{ borderBottomColor: `${brandColor}4D` }}><div className="w-2 h-2 rounded-full" style={{ backgroundColor: brandColor }} /> Market Value Allocation</h4>
-              <div className="w-full max-w-[320px] aspect-square relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)] flex items-center justify-center">
-                {isLoading ? (
-                  <div className="w-[80%] h-[80%] rounded-full border-[30px] border-slate-200 dark:border-white/10 animate-pulse" />
-                ) : mktChartData.data.length > 0 ? (
-                <ChartPie 
-                  data={{
-                    labels: mktChartData.labels,
-                    datasets: [{
-                      data: mktChartData.data,
-                      backgroundColor: mktChartData.colors,
-                      borderWidth: 2,
-                      borderColor: 'rgba(255, 255, 255, 0.1)',
-                      hoverOffset: 10,
-                    }]
-                  }}
-                  options={{
-                    plugins: { 
-                      legend: { 
+                    scales: {
+                      x: { 
+                        stacked: true, 
                         display: true, 
-                        position: 'bottom',
-                        labels: { 
-                          padding: 20, 
-                          usePointStyle: true, 
-                          pointStyle: 'circle',
-                          font: { family: 'Inter', size: 10, weight: 'bold' } 
-                        } 
+                        max: 100,
+                        grid: { display: false },
+                        ticks: {
+                          callback: (value) => `${value}%`,
+                          font: { family: 'Inter', size: 10, weight: 'bold' },
+                          color: '#64748b'
+                        }
                       },
-                      tooltip: {
-                         backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                         titleFont: { size: 13, family: 'Inter' },
-                         bodyFont: { size: 12, family: 'Inter' },
-                         padding: 12,
-                         cornerRadius: 8,
-                         displayColors: true,
+                      y: { 
+                        stacked: true,
+                        grid: { display: false }, 
+                        border: { display: false },
+                        ticks: { font: { family: 'Inter', size: 12, weight: 'bold' }, color: '#64748b' }
                       }
                     },
-                    maintainAspectRatio: true,
-                    cutout: '50%',
-                    layout: { padding: 10 }
+                    maintainAspectRatio: false,
+                    layout: { padding: 0 }
                   }}
                 />) : (
-                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No market data available</div>
+                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No data available</div>
                 )}
               </div>
             </div>
