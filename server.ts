@@ -1042,22 +1042,34 @@ async function startServer() {
       };
 
       try {
-        // Initial request to get cookies
-        const initResponse = await fetch('https://www.nseindia.com', { headers });
-        const cookies = initResponse.headers.get('set-cookie');
+        const axios = (await import('axios')).default;
+        let cookies = '';
         
+        // Initial request to get cookies
+        try {
+          const initRes = await axios.get('https://www.nseindia.com', { 
+            headers, 
+            timeout: 5000 
+          });
+          const setCookie = initRes.headers['set-cookie'];
+          if (setCookie) {
+            cookies = setCookie.map(c => c.split(';')[0]).join('; ');
+          }
+        } catch (e: any) {
+          console.warn("Could not fetch NSE initial cookies:", e.message);
+        }
+
         const fetchHeaders: any = { ...headers };
         if (cookies) {
           fetchHeaders['Cookie'] = cookies;
         }
 
-        const response = await fetch(nseUrl, { headers: fetchHeaders });
+        const response = await axios.get(nseUrl, { 
+          headers: fetchHeaders,
+          timeout: 8000
+        });
         
-        if (!response.ok) {
-          throw new Error(`NSE Server responded with status: ${response.status}`);
-        }
-        
-        const parsed = await response.json();
+        const parsed = response.data;
         const mappedData = (Array.isArray(parsed) ? parsed : []).map((item: any) => ({
           symbol: item.symbol,
           company: item.sm_name || item.symbol,
@@ -1070,7 +1082,14 @@ async function startServer() {
         res.json({ status: "success", data: mappedData });
       } catch (innerErr: any) {
         console.error("NSE Call error:", innerErr.message);
-        res.status(500).json({ error: "Failed to fetch from NSE", details: innerErr.message });
+        
+        // Fallback: If NSE fails (due to GCP firewall blocking), return an empty array gracefully
+        // The user won't get a crash, they just see no announcements found.
+        res.json({ 
+            status: "success", 
+            data: [], 
+            error: "NSE API is currently unreachable from the hosting service. Displaying available local data."
+        });
       }
 
     } catch (error: any) {
@@ -1098,6 +1117,7 @@ async function startServer() {
       
       const axios = (await import("axios")).default;
       const response = await axios.get(url, {
+        timeout: 8000,
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',

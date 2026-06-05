@@ -19,6 +19,9 @@ export function FilingsDashboard({ brandColor, holdings = [], watchlist = [] }: 
       const data = await response.json();
       if (data.status === 'success') {
         setFilings(data.data);
+        if (data.error) {
+          setError(data.error);
+        }
       } else {
         setError(data.error || 'Failed to fetch filings');
       }
