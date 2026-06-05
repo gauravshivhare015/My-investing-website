@@ -4492,7 +4492,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-start">
                 <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','particulars','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','particulars','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearTransactions} onClearRecent={clearRecentTransactions} />
                 <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearPortfolioHistory} onClearRecent={clearRecentPortfolioHistory} />
-                <Sheet title="Watchlist" coll="watchlist" data={watchlist} onEdit={handleWatchlistChange} onDelete={handleWatchlistDelete} keys={['symbol']} onPaste={(e: any) => handlePaste(e,'watchlist',['symbol'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearWatchlist} onClearRecent={clearRecentWatchlist} />
+                <Sheet title="Watchlist" coll="watchlist" data={watchlist} onEdit={handleWatchlistChange} onDelete={handleWatchlistDelete} keys={['name', 'symbol']} onPaste={(e: any) => handlePaste(e,'watchlist',['name', 'symbol'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearWatchlist} onClearRecent={clearRecentWatchlist} noLock={true} />
                 <Sheet 
                   title="Benchmark Closing Price" 
                   coll="benchmark" 
@@ -4612,6 +4612,28 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
   const [showRecentConfirm, setShowRecentConfirm] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [localEdits, setLocalEdits] = useState<Record<string, Record<string, any>>>({});
+  
+  const [localTickers, setLocalTickers] = useState<any[]>([]);
+  const [activeSuggestionRow, setActiveSuggestionRow] = useState<string | null>(null);
+  useEffect(() => {
+    if (title === 'Watchlist') {
+      fetch('/api/sheets?id=1lWJXcBqHQia0qrD-FHb7oFM2kAQ_37P3tvPFFBiJ37o')
+        .then(res => res.text())
+        .then(csvText => {
+          const lines = csvText.split('\n').filter(line => line.trim().length > 0);
+          if (lines.length > 0) {
+            const headers = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim().toUpperCase());
+            const symbolIdx = headers.indexOf('SYMBOL') > -1 ? headers.indexOf('SYMBOL') : 0;
+            const nameIdx = headers.indexOf('NAME') > -1 ? headers.indexOf('NAME') : 1;
+            const parsed = lines.slice(1).map(line => {
+              const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim());
+              return { symbol: cols[symbolIdx] || '', name: cols[nameIdx] || '' };
+            }).filter(t => t.symbol);
+            setLocalTickers(parsed);
+          }
+        }).catch(console.error);
+    }
+  }, [title]);
 
   const handleClear = () => {
     onClearAll();
@@ -4647,7 +4669,9 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
     (row.deposit !== '' && row.deposit !== undefined) || 
     (row.withdrawal !== '' && row.withdrawal !== undefined) || 
     (row.marketValue !== '' && row.marketValue !== undefined) || 
-    (row.price !== '' && row.price !== undefined)
+    (row.price !== '' && row.price !== undefined) ||
+    (row.symbol && row.symbol.trim() !== '') ||
+    (row.name && row.name.trim() !== '')
   ));
   const activeItems = data.filter((row: any) => !!row.id && !savedItems.includes(row));
 
@@ -4749,46 +4773,50 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
         </div>
         
         <div className="relative" ref={dropdownRef}>
-          <button 
-            onClick={() => setShowDropdown(!showDropdown)}
-            className={`flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-xl border transition-all duration-300 relative overflow-hidden group ${
-              isLocked 
-                ? 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white shadow-sm' 
-                : 'bg-brand text-white border-brand shadow-lg shadow-brand/20 hover:shadow-brand/40 active:scale-95 hover:-translate-y-0.5'
-            }`}
-          >
-            {!isLocked && <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />}
-            {isLocked ? (
-              <Lock size={12} className="relative z-10 opacity-70 group-hover:scale-110 transition-transform" />
-            ) : (
-              <Edit3 size={12} className="relative z-10 opacity-90 drop-shadow-sm group-hover:scale-110 transition-transform" />
-            )}
-            <span className={`text-[9px] md:text-[10px] font-black tracking-[0.2em] relative z-10 ${!isLocked ? 'drop-shadow-sm' : ''}`}>
-              {isLocked ? 'Read Only Mode' : 'EDIT MODE'}
-            </span>
-            <ChevronDown size={12} className={`transition-transform duration-300 relative z-10 ${showDropdown ? 'rotate-180' : ''} ${!isLocked ? 'drop-shadow-sm opacity-90' : 'opacity-70'}`} />
-          </button>
+          {!noLock && (
+            <button 
+              onClick={() => setShowDropdown(!showDropdown)}
+              className={`flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-xl border transition-all duration-300 relative overflow-hidden group ${
+                isLocked 
+                  ? 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white shadow-sm' 
+                  : 'bg-brand text-white border-brand shadow-lg shadow-brand/20 hover:shadow-brand/40 active:scale-95 hover:-translate-y-0.5'
+              }`}
+            >
+              {!isLocked && <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />}
+              {isLocked ? (
+                <Lock size={12} className="relative z-10 opacity-70 group-hover:scale-110 transition-transform" />
+              ) : (
+                <Edit3 size={12} className="relative z-10 opacity-90 drop-shadow-sm group-hover:scale-110 transition-transform" />
+              )}
+              <span className={`text-[9px] md:text-[10px] font-black tracking-[0.2em] relative z-10 ${!isLocked ? 'drop-shadow-sm' : ''}`}>
+                {isLocked ? 'Read Only Mode' : 'EDIT MODE'}
+              </span>
+              <ChevronDown size={12} className={`transition-transform duration-300 relative z-10 ${showDropdown ? 'rotate-180' : ''} ${!isLocked ? 'drop-shadow-sm opacity-90' : 'opacity-70'}`} />
+            </button>
+          )}
 
-          {showDropdown && (
+          {showDropdown && !noLock && (
             <div className="absolute right-0 mt-2 w-48 bg-surface-light dark:bg-[#111] border border-black/10 dark:border-white/10 rounded-xl shadow-2xl z-[100] animate-in fade-in zoom-in-95 duration-150">
               <div className="p-2 space-y-1">
-                <button 
-                  onClick={() => { 
-                    if (isLocked) {
-                      setIsLocked(false);
-                    } else {
-                      handleLock();
-                    }
-                    setShowDropdown(false); 
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between transition-colors text-slate-700 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  {isLocked ? (
-                    <>UNLOCK RECORDS <ShieldCheck size={12} className="text-emerald-500" /></>
-                  ) : (
-                    <>LOCK RECORDS <Lock size={12} className="text-zinc-500" /></>
-                  )}
-                </button>
+                {!noLock && (
+                  <button 
+                    onClick={() => { 
+                      if (isLocked) {
+                        setIsLocked(false);
+                      } else {
+                        handleLock();
+                      }
+                      setShowDropdown(false); 
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold tracking-widest flex items-center justify-between transition-colors text-slate-700 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    {isLocked ? (
+                      <>UNLOCK RECORDS <ShieldCheck size={12} className="text-emerald-500" /></>
+                    ) : (
+                      <>LOCK RECORDS <Lock size={12} className="text-zinc-500" /></>
+                    )}
+                  </button>
+                )}
                 {!isLocked && onClearRecent && (
                   <div className="border-t border-black/5 dark:border-white/5 mt-1 pt-1">
                     {showRecentConfirm ? (
@@ -4950,25 +4978,62 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                             rows={1} 
                           />
                         ) : (
-                          <input 
-                            type={(k === 'title' || k === 'particulars') ? 'text' : 'number'} 
-                            value={localEdits[row.id]?.[k] !== undefined ? localEdits[row.id][k] : (row[k] === undefined ? '' : row[k])} 
-                            onPaste={(e) => {
-                               const text = e.clipboardData.getData('Text');
-                               if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title' && k !== 'particulars') {
-                                  const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
-                                  if (!isNaN(parsed)) {
-                                     e.preventDefault();
-                                     handleLocalChange(row.id, k, parsed);
-                                  }
-                               } else {
-                                  onPaste(e);
-                               }
-                            }} 
-                            onChange={e => handleLocalChange(row.id, k, e.target.value)} 
-                            placeholder={k === 'title' || k === 'particulars' ? '...' : '0.00'} 
-                            className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
-                          />
+                          <div className="relative w-full h-full">
+                            <input 
+                              type={(k === 'title' || k === 'particulars' || k === 'symbol' || k === 'name') ? 'text' : 'number'} 
+                              value={localEdits[row.id]?.[k] !== undefined ? localEdits[row.id][k] : (row[k] === undefined ? '' : row[k])} 
+                              onPaste={(e) => {
+                                 const text = e.clipboardData.getData('Text');
+                                 if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title' && k !== 'particulars' && k !== 'symbol' && k !== 'name') {
+                                    const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
+                                    if (!isNaN(parsed)) {
+                                       e.preventDefault();
+                                       handleLocalChange(row.id, k, parsed);
+                                    }
+                                 } else {
+                                    onPaste(e);
+                                 }
+                              }} 
+                              onChange={e => {
+                                handleLocalChange(row.id, k, e.target.value);
+                                if (title === 'Watchlist' && (k === 'symbol' || k === 'name')) {
+                                  setActiveSuggestionRow(row.id);
+                                }
+                              }} 
+                              onFocus={() => {
+                                if (title === 'Watchlist' && (k === 'symbol' || k === 'name')) setActiveSuggestionRow(row.id);
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  if (activeSuggestionRow === row.id) setActiveSuggestionRow(null);
+                                }, 200);
+                              }}
+                              placeholder={k === 'title' || k === 'particulars' || k === 'symbol' || k === 'name' ? '...' : '0.00'} 
+                              className={`w-full p-3 md:p-4 bg-transparent outline-none ${focusColor} ${textColor} transition-colors font-mono text-[10px] md:text-[11px] h-12 md:h-14 placeholder:text-zinc-600 dark:placeholder:text-zinc-600`} 
+                            />
+                            {title === 'Watchlist' && activeSuggestionRow === row.id && k === 'symbol' && localTickers.length > 0 && (localEdits[row.id]?.[k] || row[k]) && (
+                              <div className="absolute top-full left-0 w-[250px] bg-white dark:bg-[#111] shadow-2xl border border-black/10 dark:border-white/10 rounded-xl max-h-[200px] overflow-y-auto z-50">
+                                {localTickers
+                                  .filter(t => t.symbol.toUpperCase().includes((localEdits[row.id]?.[k] || row[k] || '').toUpperCase()) || t.name.toUpperCase().includes((localEdits[row.id]?.[k] || row[k] || '').toUpperCase()))
+                                  .slice(0, 8)
+                                  .map((t, idx) => (
+                                    <div 
+                                      key={idx} 
+                                      className="p-3 border-b border-black/5 dark:border-white/5 hover:bg-brand/5 cursor-pointer flex flex-col"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        handleLocalChange(row.id, 'symbol', t.symbol);
+                                        handleLocalChange(row.id, 'name', t.name);
+                                        setActiveSuggestionRow(null);
+                                      }}
+                                    >
+                                      <span className="font-bold text-slate-900 dark:text-white text-xs">{t.symbol}</span>
+                                      <span className="text-[9px] text-slate-500 truncate mt-0.5">{t.name}</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
                     );
@@ -5063,24 +5128,61 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                                 rows={1} 
                               />
                             ) : (
-                              <input 
-                                type={(k === 'title' || k === 'particulars') ? 'text' : 'number'} 
-                                value={row[k] === undefined ? '' : row[k]} 
-                                onPaste={(e) => {
-                                   const text = e.clipboardData.getData('Text');
-                                   if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title' && k !== 'particulars') {
-                                      const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
-                                      if (!isNaN(parsed)) {
-                                         e.preventDefault();
-                                         onEdit(row.id, k, parsed);
-                                      }
-                                   } else {
-                                      onPaste(e);
-                                   }
-                                }}
-                                onChange={e => onEdit(row.id, k, e.target.value)} 
-                                className={`w-full bg-transparent outline-none focus:bg-brand/[0.05] ${textColor} transition-colors font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600`} 
-                              />
+                              <div className="relative w-full h-full">
+                                <input 
+                                  type={(k === 'title' || k === 'particulars' || k === 'symbol' || k === 'name') ? 'text' : 'number'} 
+                                  value={row[k] === undefined ? '' : row[k]} 
+                                  onPaste={(e) => {
+                                     const text = e.clipboardData.getData('Text');
+                                     if (text && !text.includes('\t') && !text.includes('\n') && k !== 'title' && k !== 'particulars' && k !== 'symbol' && k !== 'name') {
+                                        const parsed = parseFloat(text.replace(/[^0-9.-]+/g, ""));
+                                        if (!isNaN(parsed)) {
+                                           e.preventDefault();
+                                           onEdit(row.id, k, parsed);
+                                        }
+                                     } else {
+                                        onPaste(e);
+                                     }
+                                  }}
+                                  onChange={e => {
+                                    onEdit(row.id, k, e.target.value);
+                                    if (title === 'Watchlist' && (k === 'symbol' || k === 'name')) {
+                                      setActiveSuggestionRow(row.id);
+                                    }
+                                  }} 
+                                  onFocus={() => {
+                                    if (title === 'Watchlist' && (k === 'symbol' || k === 'name')) setActiveSuggestionRow(row.id);
+                                  }}
+                                  onBlur={() => {
+                                    setTimeout(() => {
+                                      if (activeSuggestionRow === row.id) setActiveSuggestionRow(null);
+                                    }, 200);
+                                  }}
+                                  className={`w-full bg-transparent outline-none focus:bg-brand/[0.05] ${textColor} transition-colors font-mono text-[10px] md:text-[11px] placeholder:text-zinc-600`} 
+                                />
+                                {title === 'Watchlist' && activeSuggestionRow === row.id && k === 'symbol' && localTickers.length > 0 && row[k] && (
+                                  <div className="absolute top-full left-0 w-[250px] bg-white dark:bg-[#111] shadow-2xl border border-black/10 dark:border-white/10 rounded-xl max-h-[200px] overflow-y-auto z-50">
+                                    {localTickers
+                                      .filter(t => t.symbol.toUpperCase().includes((row[k] || '').toUpperCase()) || t.name.toUpperCase().includes((row[k] || '').toUpperCase()))
+                                      .slice(0, 8)
+                                      .map((t, idx) => (
+                                        <div 
+                                          key={idx} 
+                                          className="p-3 border-b border-black/5 dark:border-white/5 hover:bg-brand/5 cursor-pointer flex flex-col"
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            onEdit(row.id, 'symbol', t.symbol);
+                                            onEdit(row.id, 'name', t.name);
+                                            setActiveSuggestionRow(null);
+                                          }}
+                                        >
+                                          <span className="font-bold text-slate-900 dark:text-white text-xs">{t.symbol}</span>
+                                          <span className="text-[9px] text-slate-500 truncate mt-0.5">{t.name}</span>
+                                        </div>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
                             )
                           )}
                         </td>
