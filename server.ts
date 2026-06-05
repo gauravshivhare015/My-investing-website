@@ -1034,27 +1034,30 @@ async function startServer() {
         path = `/api/corporate-announcements?index=equities&from_date=${formatDt(fromDate)}&to_date=${formatDt(toDate)}`;
       }
 
-      const axios = (await import('axios')).default;
-      const headers: any = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': '*/*',
+      const nseUrl = `https://www.nseindia.com${path}`;
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*, application/json',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive'
       };
 
       try {
-        const initRes = await axios.get('https://www.nseindia.com', { headers, timeout: 5000 });
-        const cookies = initRes.headers['set-cookie'];
+        // Initial request to get cookies
+        const initResponse = await fetch('https://www.nseindia.com', { headers });
+        const cookies = initResponse.headers.get('set-cookie');
+        
+        const fetchHeaders: any = { ...headers };
         if (cookies) {
-          headers['Cookie'] = cookies.map(c => c.split(';')[0]).join('; ');
+          fetchHeaders['Cookie'] = cookies;
         }
-      } catch (e: any) {
-        console.warn("Could not fetch NSE initial cookies:", e.message);
-      }
 
-      try {
-        const response = await axios.get(`https://www.nseindia.com${path}`, { headers, timeout: 8000 });
-        const parsed = response.data;
+        const response = await fetch(nseUrl, { headers: fetchHeaders });
+        
+        if (!response.ok) {
+          throw new Error(`NSE Server responded with status: ${response.status}`);
+        }
+        
+        const parsed = await response.json();
         const mappedData = (Array.isArray(parsed) ? parsed : []).map((item: any) => ({
           symbol: item.symbol,
           company: item.sm_name || item.symbol,
@@ -1063,10 +1066,11 @@ async function startServer() {
           bm_desc: item.attchmntText || item.desc,
           pdfLink: item.attchmntFile || null
         }));
+        
         res.json({ status: "success", data: mappedData });
       } catch (innerErr: any) {
         console.error("NSE Call error:", innerErr.message);
-        res.status(innerErr.response ? innerErr.response.status : 500).json({ error: "Failed to fetch from NSE", details: innerErr.message });
+        res.status(500).json({ error: "Failed to fetch from NSE", details: innerErr.message });
       }
 
     } catch (error: any) {
