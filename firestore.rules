@@ -30,6 +30,9 @@ service cloud.firestore {
       match /history/{historyId} {
         allow read, write: if isOwner(userId);
       }
+      match /watchlist/{watchlistId} {
+        allow read, write: if isOwner(userId);
+      }
       match /benchmark/{benchmarkId} {
         allow read, write: if isOwner(userId);
       }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Download, ExternalLink, Calendar, Search, AlertCircle, FileText, Bell, Filter } from 'lucide-react';
 import { format, parse } from 'date-fns';
 
-export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: string, holdings?: any[] }) {
+export function FilingsDashboard({ brandColor, holdings = [], watchlist = [] }: { brandColor: string, holdings?: any[], watchlist?: any[] }) {
   const [filings, setFilings] = useState<any[]>([]);
   const [filteredFilings, setFilteredFilings] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,12 +34,18 @@ export function FilingsDashboard({ brandColor, holdings = [] }: { brandColor: st
   }, [periodFilter]); // Refetch when periodFilter changes
 
   const investedSymbols = useMemo(() => {
-    return holdings.map(h => {
+    const fromHoldings = holdings.map(h => {
       let sym = h.name || '';
       sym = sym.replace('.NS', '').replace('.BO', '');
       return sym.toUpperCase().trim();
     });
-  }, [holdings]);
+    const fromWatchlist = watchlist.map(w => {
+      let sym = w.symbol || '';
+      sym = sym.replace('.NS', '').replace('.BO', '');
+      return sym.toUpperCase().trim();
+    });
+    return [...fromHoldings, ...fromWatchlist].filter(Boolean);
+  }, [holdings, watchlist]);
 
   useEffect(() => {
     let result = filings;

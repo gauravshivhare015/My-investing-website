@@ -1,15 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, Loader2, X, AlertCircle } from 'lucide-react';
+import { Search, Plus, Loader2, X, AlertCircle, Bookmark } from 'lucide-react';
 import { useToasts } from '../context/ToastContext';
 
 export function AddTickerFeature({ 
   user,
   holdings, 
-  onSaveHolding 
+  watchlist = [],
+  onSaveHolding,
+  onWatchlistChange,
+  onWatchlistDelete
 }: { 
   user: any;
   holdings: any[];
+  watchlist?: any[];
   onSaveHolding: (holding: any) => Promise<void>;
+  onWatchlistChange?: (id: string, field: string, value: any) => void;
+  onWatchlistDelete?: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
@@ -102,6 +108,26 @@ export function AddTickerFeature({
   const getLivePrice = async (symbol: string) => {
     const ticker = localTickers.find(t => t.symbol.toUpperCase() === symbol.toUpperCase());
     return ticker ? ticker.ltp : 0;
+  };
+
+  const toggleWatchlist = (res: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onWatchlistChange || !onWatchlistDelete) return;
+    
+    const existingIndex = watchlist.findIndex(w => (w.symbol || '').toUpperCase() === res.symbol.toUpperCase());
+    
+    if (existingIndex !== -1) {
+      onWatchlistDelete(watchlist[existingIndex].id);
+      addToast(`${res.symbol} removed from Watchlist`, "info");
+    } else {
+      const emptySlot = watchlist.find(w => !w.symbol || w.symbol.trim() === '');
+      if (emptySlot) {
+        onWatchlistChange(emptySlot.id, 'symbol', res.symbol);
+      } else {
+        onWatchlistChange(Date.now().toString(36) + Math.random().toString(36).substr(2), 'symbol', res.symbol);
+      }
+      addToast(`${res.symbol} added to Watchlist`, "success");
+    }
   };
 
   const handleSelectTicker = async (ticker: any) => {
@@ -232,7 +258,9 @@ export function AddTickerFeature({
              </div>
           ) : results.length > 0 ? (
              <div className="max-h-[300px] overflow-y-auto">
-               {results.map((res: any, idx: number) => (
+               {results.map((res: any, idx: number) => {
+                  const isInWatchlist = watchlist.some(w => (w.symbol || '').toUpperCase() === res.symbol.toUpperCase());
+                  return (
                  <div 
                    key={idx}
                    className="flex items-center justify-between p-4 border-b border-black/5 dark:border-white/5 hover:bg-brand/5 group transition-colors"
@@ -241,14 +269,24 @@ export function AddTickerFeature({
                      <div className="font-bold text-slate-900 dark:text-white group-hover:text-brand">{res.symbol}</div>
                      <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-slate-500 dark:text-zinc-500 font-bold truncate max-w-[200px] mt-1">{res.longname || res.shortname} • {res.exchDisp}</div>
                    </div>
-                   <button 
-                     onClick={() => handleSelectTicker(res)}
-                     className="bg-emerald-500 hover:bg-emerald-400 text-white p-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all active:scale-95 group-hover:scale-110"
-                   >
-                     <Plus size={16} className="stroke-[3px]" />
-                   </button>
+                   <div className="flex gap-2 items-center">
+                     <button 
+                       onClick={(e) => toggleWatchlist(res, e)}
+                       title={isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
+                       className={`p-2.5 rounded-xl shadow-lg transition-all active:scale-95 group-hover:scale-110 ${isInWatchlist ? 'bg-brand/20 text-brand shadow-brand/10' : 'bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-zinc-400 hover:bg-brand/10 hover:text-brand shadow-black/5 dark:shadow-white/5'}`}
+                     >
+                       {isInWatchlist ? <Bookmark size={16} fill="currentColor" className="stroke-[2px]" /> : <Bookmark size={16} className="stroke-[2px]" />}
+                     </button>
+                     <button 
+                       onClick={() => handleSelectTicker(res)}
+                       title="Add to Portfolio"
+                       className="bg-emerald-500 hover:bg-emerald-400 text-white p-2.5 rounded-xl shadow-lg shadow-emerald-500/20 transition-all active:scale-95 group-hover:scale-110"
+                     >
+                       <Plus size={16} className="stroke-[3px]" />
+                     </button>
+                   </div>
                  </div>
-               ))}
+                );})}
              </div>
           ) : !isLoading && (
              <div className="p-8 text-center text-slate-500 dark:text-zinc-500 text-[10px] uppercase font-bold tracking-widest flex flex-col items-center gap-3">

@@ -2117,7 +2117,7 @@ const ThemeCustomizerModal = ({ isOpen, onClose, brandColor, setBrandColor }: { 
   );
 };
 
-const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, showManualTickers, setShowManualTickers, setAngelOneEnabled, isLoading = false }: { user: any, holdings: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void, setAngelOneEnabled?: (v: boolean) => void, isLoading?: boolean }) => {
+const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHolding, onWatchlistChange, onWatchlistDelete, isApiMode, showManualTickers, setShowManualTickers, setAngelOneEnabled, isLoading = false }: { user: any, holdings: any[], watchlist?: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, onWatchlistChange?: (id: string, field: string, value: any) => void, onWatchlistDelete?: (id: string) => void, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void, setAngelOneEnabled?: (v: boolean) => void, isLoading?: boolean }) => {
   const { addToast } = useToasts();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
@@ -2902,7 +2902,7 @@ const HoldingsTable = ({ user, holdings, brandColor, onSaveHolding, isApiMode, s
              </button>
            </div>
 
-           <AddTickerFeature user={user} holdings={holdings} onSaveHolding={onSaveHolding} />
+           <AddTickerFeature user={user} holdings={holdings} watchlist={watchlist} onSaveHolding={onSaveHolding} onWatchlistChange={onWatchlistChange} onWatchlistDelete={onWatchlistDelete} />
 
            <button 
              onClick={() => setIsManualModalOpen(true)}
@@ -3191,6 +3191,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   }, [brandColor]);
 
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [watchlist, setWatchlist] = useState<any[]>([]);
   const [portfolioHistory, setPortfolioHistory] = useState<any[]>([]);
   const [benchmarkHistory, setBenchmarkHistory] = useState<any[]>([]);
   const [activeSection, setActiveSection] = useState<string>('dashboards');
@@ -3437,6 +3438,9 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     const apiSummaryPath = doc(db, 'artifacts', appId, 'users', user.uid, 'api_summary', 'holdings');
     const holdingsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'holdings');
 
+    const benchPath = collection(db, 'artifacts', appId, 'users', user.uid, 'benchmark');
+    const watchlistPath = collection(db, 'artifacts', appId, 'users', user.uid, 'watchlist');
+
     const unsubTxns = onSnapshot(query(txnsPath, orderBy('date', 'asc')), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setTransactions([...data, { id: generateId(), date: new Date().toISOString().split('T')[0], deposit: '', withdrawal: '' }]);
@@ -3451,6 +3455,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setBenchmarkHistory([...data, { id: generateId(), date: new Date().toISOString().split('T')[0], price: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, `artifacts/${appId}/users/${user.uid}/benchmark`));
+
+    const unsubWatchlist = onSnapshot(watchlistPath, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      setWatchlist([...data, { id: generateId(), symbol: '' }]);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, watchlistPath.path));
 
     const unsubPrompts = onSnapshot(promptsPath, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
@@ -3479,7 +3488,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     }, (error) => handleFirestoreError(error, OperationType.LIST, holdingsPath.path));
 
     return () => { 
-      unsubTxns(); unsubHist(); unsubBench();
+      unsubTxns(); unsubHist(); unsubBench(); unsubWatchlist();
       unsubPrompts(); unsubFiles(); unsubApiTrades(); unsubHoldings(); 
     };
   }, [user]);
@@ -3549,6 +3558,29 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     });
     deleteCloudDoc('transactions', id);
   };
+
+  const handleWatchlistChange = (id: string, field: string, value: any) => {
+    setWatchlist(prev => {
+      const row = prev.find(t => t.id === id);
+      if (!row) {
+        const newRow = { id, [field]: value };
+        if (newRow.symbol && newRow.symbol.trim() !== '') updateCloudDoc('watchlist', id, newRow);
+        return [...prev, newRow];
+      }
+      const updated = { ...row, [field]: value };
+      if (updated.symbol && updated.symbol.trim() !== '') updateCloudDoc('watchlist', id, updated);
+      return prev.map(t => t.id === id ? updated : t);
+    });
+  };
+  const handleWatchlistDelete = (id: string) => {
+    setWatchlist(prev => {
+      const next = prev.filter(t => t.id !== id);
+      const hasEmpty = next.some(t => !t.symbol || t.symbol === '');
+      if (!hasEmpty) next.push({ id: generateId(), symbol: '' });
+      return next;
+    });
+    deleteCloudDoc('watchlist', id);
+  };
   const handleMvChange = (id: string, field: string, value: any) => {
     setPortfolioHistory(prev => {
       const row = prev.find(p => p.id === id);
@@ -3615,6 +3647,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const clearBenchmarkHistory = () => clearHistory('benchmark', 'Benchmark Closing Price');
   const clearTransactions = () => clearHistory('transactions', 'Transactions');
   const clearPortfolioHistory = () => clearHistory('history', 'Portfolio Value');
+  const clearWatchlist = () => clearHistory('watchlist', 'Watchlist');
 
   const handlePromptChange = (id: string, field: string, value: any) => {
     const row = prompts.find(p => p.id === id);
@@ -3750,6 +3783,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
   const clearRecentPortfolioHistory = () => clearRecentHistory('history', 'Portfolio Value');
   const clearRecentTransactions = () => clearRecentHistory('transactions', 'Transactions');
   const clearRecentBenchmark = () => clearRecentHistory('benchmark', 'Benchmark');
+  const clearRecentWatchlist = () => clearRecentHistory('watchlist', 'Watchlist');
 
   const [isDragging, setIsDragging] = useState(false);
 
@@ -4247,11 +4281,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="holdings">
-                <HoldingsTable isLoading={loadingData} user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} setAngelOneEnabled={setAngelOneEnabled} />
+                <HoldingsTable isLoading={loadingData} user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} watchlist={watchlist} onWatchlistChange={handleWatchlistChange} onWatchlistDelete={handleWatchlistDelete} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} setAngelOneEnabled={setAngelOneEnabled} />
               </div>
 
               <div id="filings">
-                <FilingsDashboard brandColor={brandColor} holdings={holdings} />
+                <FilingsDashboard brandColor={brandColor} holdings={holdings} watchlist={watchlist} />
               </div>
 
               {angelOneEnabled && apiTrades.length > 0 && (
@@ -4458,6 +4492,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-start">
                 <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','particulars','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','particulars','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearTransactions} onClearRecent={clearRecentTransactions} />
                 <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearPortfolioHistory} onClearRecent={clearRecentPortfolioHistory} />
+                <Sheet title="Watchlist" coll="watchlist" data={watchlist} onEdit={handleWatchlistChange} onDelete={handleWatchlistDelete} keys={['symbol']} onPaste={(e: any) => handlePaste(e,'watchlist',['symbol'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearWatchlist} onClearRecent={clearRecentWatchlist} />
                 <Sheet 
                   title="Benchmark Closing Price" 
                   coll="benchmark" 

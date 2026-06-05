@@ -1034,50 +1034,41 @@ async function startServer() {
         path = `/api/corporate-announcements?index=equities&from_date=${formatDt(fromDate)}&to_date=${formatDt(toDate)}`;
       }
 
-      const https = await import('https');
-      const options = {
-        hostname: 'www.nseindia.com',
-        path: path,
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Connection': 'keep-alive',
-          'Referer': 'https://www.nseindia.com/companies-listing/corporate-filings-announcements'
-        }
+      const axios = (await import('axios')).default;
+      const headers: any = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive'
       };
 
-      const request = https.request(options, (response) => {
-        let data = '';
-        response.on('data', chunk => data += chunk);
-        response.on('end', () => {
-          if (response.statusCode === 200) {
-            try {
-              const parsed = JSON.parse(data);
-              const mappedData = (Array.isArray(parsed) ? parsed : []).map((item: any) => ({
-                symbol: item.symbol,
-                company: item.sm_name || item.symbol,
-                purpose: item.desc || 'Announcement',
-                date: item.an_dt || item.sort_date,
-                bm_desc: item.attchmntText || item.desc,
-                pdfLink: item.attchmntFile || null
-              }));
-              res.json({ status: "success", data: mappedData });
-            } catch (e: any) {
-              res.status(500).json({ error: "Failed to parse NSE data", details: e.message });
-            }
-          } else {
-            res.status(response.statusCode || 500).json({ error: "Failed to fetch from NSE", status: response.statusCode });
-          }
-        });
-      });
-      
-      request.on('error', (e) => {
-        console.error("NSE Call error:", e.message);
-        res.status(500).json({ error: "Failed to fetch from NSE", details: e.message });
-      });
-      request.end();
+      try {
+        const initRes = await axios.get('https://www.nseindia.com', { headers, timeout: 5000 });
+        const cookies = initRes.headers['set-cookie'];
+        if (cookies) {
+          headers['Cookie'] = cookies.map(c => c.split(';')[0]).join('; ');
+        }
+      } catch (e: any) {
+        console.warn("Could not fetch NSE initial cookies:", e.message);
+      }
+
+      try {
+        const response = await axios.get(`https://www.nseindia.com${path}`, { headers, timeout: 8000 });
+        const parsed = response.data;
+        const mappedData = (Array.isArray(parsed) ? parsed : []).map((item: any) => ({
+          symbol: item.symbol,
+          company: item.sm_name || item.symbol,
+          purpose: item.desc || 'Announcement',
+          date: item.an_dt || item.sort_date,
+          bm_desc: item.attchmntText || item.desc,
+          pdfLink: item.attchmntFile || null
+        }));
+        res.json({ status: "success", data: mappedData });
+      } catch (innerErr: any) {
+        console.error("NSE Call error:", innerErr.message);
+        res.status(innerErr.response ? innerErr.response.status : 500).json({ error: "Failed to fetch from NSE", details: innerErr.message });
+      }
+
     } catch (error: any) {
       console.error("NSE Calendar error:", error.message);
       res.status(500).json({ error: "Internal server error", details: error.message });
