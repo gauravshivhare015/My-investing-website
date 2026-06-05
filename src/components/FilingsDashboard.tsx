@@ -15,10 +15,28 @@ export function FilingsDashboard({ brandColor, holdings = [], watchlist = [] }: 
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/nse/calendar${periodFilter === '1M' ? '?period=1M' : ''}`);
-      const data = await response.json();
-      if (data.status === 'success') {
-        setFilings(data.data);
+      const response = await fetch("/api/bse/filings");
+      
+      const contentType = response.headers.get("content-type");
+      let data;
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        data = await response.json();
+      } else {
+        throw new Error("Invalid response format from server");
+      }
+
+      if (data.status === "success" && data.data) {
+        const filingsData = Array.isArray(data.data) ? data.data : [];
+        const mappedFilings = filingsData.map((item: any) => ({
+          symbol: item.symbol || '', 
+          company: item.sm_name || 'Unknown',
+          purpose: item.desc || 'Announcement',
+          date: item.an_dt || '',
+          bm_desc: item.attchmntText || '',
+          pdfLink: item.attchmntFile || null,
+        }));
+        
+        setFilings(mappedFilings);
         if (data.error) {
           setError(data.error);
         }

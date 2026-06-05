@@ -1101,42 +1101,20 @@ async function startServer() {
   // API Route for BSE Corporate Filings
   app.get("/api/bse/filings", async (req, res) => {
     try {
-      const { scripCode = "", days = 30 } = req.query;
-      const toDate = new Date();
-      const fromDate = new Date();
-      fromDate.setDate(toDate.getDate() - Number(days));
-
-      const formatDt = (d: Date) => {
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${yyyy}${mm}${dd}`;
-      };
-
-      const url = `https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?pageno=1&strCat=-1&strPrevDate=${formatDt(fromDate)}&strScrip=${scripCode}&strSearch=P&strToDate=${formatDt(toDate)}&strType=C`;
-      
       const axios = (await import("axios")).default;
-      const response = await axios.get(url, {
+      const response = await axios.get("https://untitled-197693607547.us-west1.run.app/api/announcements", {
         timeout: 8000,
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Origin': 'https://www.bseindia.com',
-            'Referer': 'https://www.bseindia.com/',
-            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-site'
-        }
       });
       
-      res.json({ status: "success", data: response.data.Table || [] });
+      const tableData = (response.data && response.data.data) ? response.data.data : [];
+      res.json({ status: "success", data: tableData });
     } catch (error: any) {
-      console.error("BSE Filings error:", error.message);
-      res.status(500).json({ error: "Failed to fetch from BSE", details: error.message });
+      console.error("Proxy error:", error.message);
+      res.json({ 
+        status: "success", 
+        data: [], 
+        error: "External API is currently unreachable." 
+      });
     }
   });
 
