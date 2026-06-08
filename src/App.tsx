@@ -3356,7 +3356,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     if (activeTab !== 'dashboard') return;
 
     const handleScroll = () => {
-      const ids = ['dashboards', 'performance', 'savings', 'holdings', 'prompts', 'documents'];
+      const ids = ['dashboards', 'performance', 'savings', 'holdings', 'filings', 'prompts', 'documents'];
       let currentActive = 'dashboards';
       
       const scrollPosition = window.scrollY + 200; // offset of the sticky nav height
@@ -3364,16 +3364,21 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       for (const id of ids) {
         const element = document.getElementById(id);
         if (element) {
-          // getOffsetTop recursively to account for nested offset parents
-          let offsetTop = 0;
-          let el: HTMLElement | null = element;
-          while (el) {
-            offsetTop += el.offsetTop;
-            el = el.offsetParent as HTMLElement;
-          }
+          const offsetTop = element.getBoundingClientRect().top + window.scrollY;
           
           if (offsetTop <= scrollPosition) {
             currentActive = id;
+          }
+        }
+      }
+
+      // If we are at the very bottom of the page, forcefully highlight the bottom-most visible section
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 10) {
+        // Find the last valid element in the list that actually exists in the DOM
+        for (let i = ids.length - 1; i >= 0; i--) {
+          if (document.getElementById(ids[i])) {
+            currentActive = ids[i];
+            break;
           }
         }
       }
@@ -4121,7 +4126,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <button onClick={() => scrollToSection('performance')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'performance' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Performance</button>
               <button onClick={() => scrollToSection('savings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'savings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Savings</button>
               <button onClick={() => scrollToSection('holdings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'holdings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Equity</button>
-              <button onClick={() => scrollToSection('filings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'filings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Filings</button>
+              <button onClick={() => window.open('https://aistudio.google.com/apps/a1706b14-3507-47c1-9c7e-80e788253ee6?showPreview=true&showAssistant=true&project=gen-lang-client-0213064099&fullscreenApplet=true', '_blank')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'filings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Filings</button>
               <button onClick={() => scrollToSection('prompts')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'prompts' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Prompts</button>
               <button onClick={() => scrollToSection('documents')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'documents' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Docs</button>
             </div>

@@ -109,7 +109,10 @@ export function FilingsDashboard({ brandColor, holdings = [], watchlist = [] }: 
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+          <h2 
+            className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2 cursor-pointer hover:underline hover:text-brand transition-colors"
+            onClick={() => window.open('https://aistudio.google.com/apps/a1706b14-3507-47c1-9c7e-80e788253ee6?showPreview=true&showAssistant=true&project=gen-lang-client-0213064099&fullscreenApplet=true', '_blank')}
+          >
             <Calendar size={24} style={{ color: brandColor }} />
             Corporate Announcements
           </h2>

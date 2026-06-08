@@ -1014,7 +1014,21 @@ async function startServer() {
   });
 
   // API Route for NSE Announcements
-  app.get("/api/nse/calendar", async (req, res) => {
+  app.all("/api/nse/calendar", async (req, res) => {
+    res.set({
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    });
+
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
+
+    if (req.method !== "GET") {
+      return res.status(405).end();
+    }
+
     try {
       const { period } = req.query;
       let path = '/api/corporate-announcements?index=equities';
