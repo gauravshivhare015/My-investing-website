@@ -17,8 +17,18 @@ const Footer = () => {
   };
 
   const socialLinks = [
-    { name: 'X', icon: <XIcon size={18} />, href: 'https://x.com/Wellverse_' },
-    { name: 'YouTube', icon: <Youtube size={18} />, href: 'https://www.youtube.com/@gauravshivhare015' },
+    { 
+      name: 'X', 
+      icon: <XIcon size={18} />, 
+      href: 'https://x.com/Wellverse_',
+      hoverClass: "hover:bg-zinc-900 hover:text-white dark:hover:bg-white dark:hover:text-black hover:border-zinc-800"
+    },
+    { 
+      name: 'YouTube', 
+      icon: <Youtube size={18} />, 
+      href: 'https://www.youtube.com/@gauravshivhare015',
+      hoverClass: "hover:bg-[#ff0000] hover:text-white hover:border-[#ff0000]"
+    },
   ];
 
   return (
@@ -49,17 +59,21 @@ const Footer = () => {
               <div className="flex items-center gap-4">
                 {socialLinks.map((social) => (
                   <motion.a
-                  key={social.name}
-                  href={social.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  whileHover={{ y: -4, scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-brand hover:text-white dark:hover:bg-brand transition-all shadow-sm hover:shadow-lg hover:shadow-brand/30"
-                >
-                  {social.icon}
-                </motion.a>
-              ))}
+                    key={social.name}
+                    href={social.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    whileHover={
+                      social.name === 'X' 
+                        ? { rotate: 360, scale: 1.15, y: -2, transition: { type: "spring", stiffness: 200 } } 
+                        : { scale: 1.2, y: -4, transition: { type: "spring", stiffness: 350, damping: 8 } }
+                    }
+                    whileTap={{ scale: 0.9 }}
+                    className={`w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-600 dark:text-zinc-400 ${social.hoverClass} transition-all duration-300 shadow-sm hover:shadow-lg`}
+                  >
+                    {social.icon}
+                  </motion.a>
+                ))}
               </div>
             </div>
           </div>
@@ -68,34 +82,56 @@ const Footer = () => {
           <div className="space-y-6">
             <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 dark:text-zinc-500">Support & Feedback</h4>
             <div className="flex flex-col gap-3">
-              <a 
+              <motion.a 
                 href={getGmailLink("Site Feedback & Suggestions")}
                 target="_blank"
                 rel="noreferrer"
-                className="group flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-transparent hover:border-brand/20 transition-all hover:bg-white dark:hover:bg-white/[0.04] hover:shadow-xl hover:shadow-brand/5 active:scale-[0.98]"
+                whileHover="hover"
+                whileTap={{ scale: 0.98 }}
+                className="group flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-transparent hover:border-brand/20 transition-all hover:bg-white dark:hover:bg-white/[0.04] hover:shadow-xl hover:shadow-brand/5 active:scale-[0.98] cursor-pointer"
               >
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
+                <motion.div 
+                  variants={{
+                    hover: { 
+                      scale: 1.15, 
+                      rotate: [0, -12, 12, -8, 8, 0],
+                      transition: { duration: 0.5 }
+                    }
+                  }}
+                  className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300 shrink-0"
+                >
                   <MessageSquare size={18} />
-                </div>
+                </motion.div>
                 <div>
                   <div className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-brand transition-colors">Feedback</div>
                   <div className="text-[10px] text-slate-500 font-medium">Share your suggestions</div>
                 </div>
-              </a>
-              <a 
+              </motion.a>
+              <motion.a 
                 href={getGmailLink("Bug Report - My Investing Website")}
                 target="_blank"
                 rel="noreferrer"
-                className="group flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-transparent hover:border-rose-500/20 transition-all hover:bg-white dark:hover:bg-white/[0.04] hover:shadow-xl hover:shadow-rose-500/5 active:scale-[0.98]"
+                whileHover="hover"
+                whileTap={{ scale: 0.98 }}
+                className="group flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-transparent hover:border-rose-500/20 transition-all hover:bg-white dark:hover:bg-white/[0.04] hover:shadow-xl hover:shadow-rose-500/5 active:scale-[0.98] cursor-pointer"
               >
-                <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center group-hover:scale-110 group-hover:bg-rose-500 group-hover:text-white transition-all duration-300">
+                <motion.div 
+                  variants={{
+                    hover: { 
+                      scale: 1.15,
+                      x: [0, -4, 4, -4, 4, 0],
+                      transition: { duration: 0.4 }
+                    }
+                  }}
+                  className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center group-hover:bg-rose-500 group-hover:text-white transition-all duration-300 shrink-0"
+                >
                   <Bug size={18} />
-                </div>
+                </motion.div>
                 <div>
                   <div className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-rose-500 transition-colors">Report Bug</div>
                   <div className="text-[10px] text-slate-500 font-medium">Help us improve the app</div>
                 </div>
-              </a>
+              </motion.a>
             </div>
           </div>
 
@@ -104,9 +140,16 @@ const Footer = () => {
             <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 dark:text-zinc-500">Connect</h4>
             <div className="space-y-5">
               <div className="flex items-start gap-3 group">
-                <div className="w-5 h-5 mt-0.5 text-brand group-hover:scale-125 transition-transform">
+                <motion.div 
+                  whileHover={{ 
+                    scale: 1.25, 
+                    y: -2,
+                    transition: { type: "spring", stiffness: 400, damping: 10 }
+                  }}
+                  className="w-5 h-5 mt-0.5 text-brand cursor-pointer shrink-0"
+                >
                   <Mail size={18} />
-                </div>
+                </motion.div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-1">Email Support</p>
                   <a 
@@ -119,10 +162,18 @@ const Footer = () => {
                   </a>
                 </div>
               </div>
-              <div className="flex items-start gap-3">
-                <div className="w-5 h-5 mt-0.5 text-brand">
+              <div className="flex items-start gap-3 group">
+                <motion.div 
+                  whileHover={{ 
+                    x: 3, 
+                    y: -3, 
+                    scale: 1.25,
+                    transition: { type: "spring", stiffness: 400, damping: 10 }
+                  }}
+                  className="w-5 h-5 mt-0.5 text-brand cursor-pointer shrink-0"
+                >
                   <ExternalLink size={18} />
-                </div>
+                </motion.div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-1">Live Site</p>
                   <a href="https://my-investing-website.vercel.app/" target="_blank" rel="noreferrer" className="text-sm font-semibold text-slate-700 dark:text-zinc-300 hover:text-brand transition-colors">

@@ -809,9 +809,15 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
         </div>
       </div>
       <div>
-        <div className="text-xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-0.5 tracking-tight truncate">
+        <motion.div 
+          whileHover={{ 
+            scale: 1.05, 
+            transition: { type: "spring", stiffness: 450, damping: 12 } 
+          }}
+          className="text-xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-0.5 tracking-tight truncate origin-left inline-block cursor-default select-all"
+        >
           {typeof rawValue === 'number' ? <NumberTicker value={rawValue} /> : value}
-        </div>
+        </motion.div>
         {subtext && (
           <div className={`text-[9px] md:text-sm flex flex-wrap items-center gap-1 mt-1 font-medium ${trend === 'up' ? 'text-emerald-500' : trend === 'down' ? 'text-rose-500' : 'text-slate-500'}`}>
             {trend === 'up' && <ArrowUpRight className="shrink-0" size={14} strokeWidth={2.5} />}
@@ -4255,28 +4261,47 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Data</button>
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2">
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.12, rotate: 45 }}
+                    whileTap={{ scale: 0.9, rotate: -45 }}
                     onClick={() => setIsDarkMode(!isDarkMode)}
-                    className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 transition-all shrink-0 cursor-pointer"
+                    className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 transition-all shrink-0 cursor-pointer overflow-hidden flex items-center justify-center w-8 h-8 md:w-10 md:h-10"
                     aria-label="Toggle theme"
                   >
-                    {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
-                  </button>
-                  <button 
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.div
+                        key={isDarkMode ? 'dark' : 'light'}
+                        initial={{ opacity: 0, rotate: -90, scale: 0.8 }}
+                        animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                        exit={{ opacity: 0, rotate: 90, scale: 0.8 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex items-center justify-center shrink-0"
+                      >
+                        {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+                      </motion.div>
+                    </AnimatePresence>
+                  </motion.button>
+                  <motion.button 
+                    whileHover={{ scale: 1.12, rotate: 180 }}
+                    whileTap={{ scale: 0.88, rotate: 360 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 15 }}
                     onClick={() => setShowThemePicker(true)}
-                    className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 hover:text-brand transition-all shrink-0 cursor-pointer"
+                    className="p-1.5 md:p-2 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-900 dark:text-white hover:bg-black/10 hover:text-brand transition-all shrink-0 cursor-pointer flex items-center justify-center w-8 h-8 md:w-10 md:h-10"
                     title="Customize UI Colors"
                     aria-label="Customize UI Colors"
                   >
                     <Palette size={16} style={{ color: brandColor }} />
-                  </button>
-                  <button 
+                  </motion.button>
+                  <motion.button 
+                    whileHover={{ scale: 1.12, x: 3 }}
+                    whileTap={{ scale: 0.88, x: -3 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 12 }}
                     onClick={handleLogout}
-                    className="p-1.5 md:p-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all shrink-0"
+                    className="p-1.5 md:p-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all shrink-0 cursor-pointer flex items-center justify-center w-8 h-8 md:w-10 md:h-10"
                     title="Log Out"
                   >
                     <LogOut size={16} />
-                  </button>
+                  </motion.button>
                 </div>
               </div>
             </div>
@@ -4362,7 +4387,19 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   transition={{ duration: 0.8, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   className="relative group overflow-hidden glass-card rounded-2xl p-4 sm:p-5 md:p-6 transition-all duration-500 hover:scale-[1.02]"
                 >
-                  <div className="flex items-center justify-between mb-4 md:mb-5"><h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Avg Savings</h3><Calendar className="text-zinc-400" size={18} strokeWidth={2.5} /></div>
+                  <div className="flex items-center justify-between mb-4 md:mb-5">
+                    <h3 className="text-[10px] md:text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Avg Savings</h3>
+                    <motion.div 
+                      whileHover={{ 
+                        rotate: [0, -12, 12, -8, 8, 0], 
+                        scale: 1.15, 
+                        transition: { duration: 0.5 } 
+                      }} 
+                      className="text-zinc-400 cursor-pointer shrink-0"
+                    >
+                      <Calendar size={18} strokeWidth={2.5} />
+                    </motion.div>
+                  </div>
                   <div className="space-y-3">
                     <div className="flex justify-between items-baseline"><span className="text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-zinc-400 tracking-widest uppercase">Annual</span><span className="text-base md:text-lg font-bold text-slate-900 dark:text-white"><NumberTicker value={metrics.avgY} /></span></div>
                     <div className="flex justify-between items-baseline pt-1 border-t border-slate-100 dark:border-white/10"><span className="text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-zinc-400 tracking-widest uppercase">Monthly</span><span className="text-slate-700 dark:text-zinc-300"><NumberTicker value={metrics.avgM} /></span></div>
@@ -4379,7 +4416,17 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                     <h3 className="text-[9px] md:text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Future Wealth</h3>
                     <div className="flex items-center gap-2">
                        <span className="text-[8px] font-black text-violet-500 px-2 py-0.5 bg-violet-500/10 rounded-full border border-violet-500/20">{(metrics.rate * 100).toFixed(1)}% PROJ.</span>
-                       <Rocket className="text-violet-400 shrink-0" size={18} strokeWidth={2.5} />
+                       <motion.div 
+                         whileHover={{ 
+                           y: -5, 
+                           x: 5, 
+                           scale: 1.25, 
+                           transition: { type: "spring", stiffness: 350, damping: 10 } 
+                         }} 
+                         className="text-violet-400 shrink-0 cursor-pointer"
+                       >
+                         <Rocket size={18} strokeWidth={2.5} />
+                       </motion.div>
                     </div>
                   </div>
                   <div className="space-y-3">
@@ -4491,14 +4538,30 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               )}
 
               <div id="prompts" className="space-y-6 pb-10">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-brand/10 rounded-lg text-brand"><MessageSquare size={20} /></div><h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Prompts</h3></div><div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-slate-200/60 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/10 focus:border-brand/30 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" /></div></div>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <motion.div 
+                      whileHover={{ scale: 1.15, rotate: -8, transition: { type: "spring", stiffness: 450 } }} 
+                      className="p-2 bg-brand/10 rounded-lg text-brand cursor-pointer shrink-0"
+                    >
+                      <MessageSquare size={20} />
+                    </motion.div>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Prompts</h3>
+                  </div>
+                  <div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-slate-200/60 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/10 focus:border-brand/30 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" /></div>
+                </div>
                 {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} rating={p.rating} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onEditRating={handlePromptRatingEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout key="add-prompt-btn"><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-slate-200 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-slate-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-slate-300 dark:text-zinc-800 mb-4" /><p className="text-slate-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
               </div>
 
               <div id="documents" className="space-y-6 pb-10">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-brand/10 rounded-lg text-brand"><File size={20} /></div>
+                    <motion.div 
+                      whileHover={{ y: -3, scale: 1.15, transition: { type: "spring", stiffness: 450 } }} 
+                      className="p-2 bg-brand/10 rounded-lg text-brand cursor-pointer shrink-0"
+                    >
+                      <File size={20} />
+                    </motion.div>
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight uppercase">Documents</h3>
                   </div>
                 </div>
