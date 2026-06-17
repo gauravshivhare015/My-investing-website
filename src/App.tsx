@@ -3105,7 +3105,7 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
                     scales: {
                       x: { 
                         stacked: true, 
-                        display: true, 
+                        display: false, 
                         max: 100,
                         grid: { display: false },
                         ticks: {
