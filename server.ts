@@ -547,7 +547,7 @@ async function startServer() {
         return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server. Please define it in your environment variables/Settings." });
       }
       
-      const { model = "gemini-3.5-flash", contents, config } = req.body;
+      const { model = "gemini-2.5-flash", contents, config } = req.body;
       if (!contents) {
         return res.status(400).json({ error: "Missing contents" });
       }
@@ -597,7 +597,7 @@ async function startServer() {
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: [
             {
                inlineData: { data: inlineData, mimeType }
@@ -681,7 +681,7 @@ async function startServer() {
       const hasImage = messages.some((m: any) => m.parts && m.parts.some((p: any) => p.inlineData));
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: messages,
         config: {
           systemInstruction: "You are an intelligent investment guide and automated data-entry assistant for an Equity Dashboard webapp. You explain UI features and financial calculations. If the user uploads a broker portfolio screenshot, you MUST extract the Tickers, LTP, Market Value, Overall Gain, and Today's Gain and invoke 'overwriteEquityDashboard'. You can infer `qty` (Market Value / LTP) and `avg` ((Market Value - Overall Gain) / qty) if they are missing.",

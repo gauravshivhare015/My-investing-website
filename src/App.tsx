@@ -1527,7 +1527,7 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: `Identify the absolute latest market price (LTP) for Indian Sovereign Gold Bond/Stock: ${holding.name}. Return ONLY the number. No other text. If not found, estimate based on 24k gold price or recent stock price.`,
           config: { tools: [{ googleSearch: {} }] }
         })
@@ -1716,6 +1716,132 @@ const HoldingEditModal = ({ isOpen, onClose, onSave, onDelete, holding }: { isOp
   );
 };
 
+const AiImportModal = ({ isOpen, onClose, onFileChange, onPasteText, isProcessing, brandColor }: any) => {
+  const [pasteText, setPasteText] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrag = (e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      onFileChange({ target: { files: e.dataTransfer.files } } as any);
+      onClose();
+    }
+  };
+
+  const handleExtract = () => {
+    if (!pasteText.trim()) return;
+    onPasteText(pasteText);
+    setPasteText('');
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+            className="bg-white dark:bg-[#0d0d0d] rounded-3xl border border-black/10 dark:border-white/10 w-full max-w-lg overflow-hidden shadow-2xl relative"
+          >
+            {/* Close Button */}
+            <button 
+              onClick={onClose} 
+              className="absolute top-5 right-5 text-zinc-400 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="p-6 md:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500">
+                  <Sparkles size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight flex items-center gap-2">AI Portfolio Import</h3>
+                  <p className="text-[10px] text-zinc-500 font-medium">Extract holdings from screenshots or copy-pasted text using Gemini AI.</p>
+                </div>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Drag & Drop Area */}
+                <div 
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${dragActive ? 'border-brand bg-brand/5' : 'border-black/10 dark:border-white/10 hover:border-brand/40 hover:bg-black/[0.01] dark:hover:bg-white/[0.01]'}`}
+                >
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    ref={fileInputRef} 
+                    onChange={(e) => {
+                      onFileChange(e);
+                      onClose();
+                    }} 
+                    accept="image/*,.txt,.csv" 
+                  />
+                  <div className="p-2.5 bg-black/5 dark:bg-white/5 rounded-xl text-slate-500 dark:text-zinc-400">
+                    <UploadCloud size={24} />
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-300">Choose screenshot or drag here</span>
+                  <span className="text-[10px] text-zinc-500">Supports PNG, JPG screenshot or TXT, CSV portfolio file</span>
+                </div>
+
+                {/* Separator */}
+                <div className="relative flex py-2 items-center">
+                  <div className="flex-grow border-t border-black/5 dark:border-white/5"></div>
+                  <span className="flex-shrink mx-4 text-[9px] font-black uppercase tracking-widest text-zinc-500">Or Paste Text Directly</span>
+                  <div className="flex-grow border-t border-black/5 dark:border-white/5"></div>
+                </div>
+
+                {/* Paste Area */}
+                <div className="space-y-3">
+                  <textarea
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-[#1a1a1a] border border-black/5 dark:border-white/5 p-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all font-mono text-[11px] h-32 resize-none placeholder:text-zinc-500 text-slate-900 dark:text-white"
+                    placeholder="Paste raw text, CSV rows, or broker table copy output here..."
+                  />
+                  <button
+                    onClick={handleExtract}
+                    disabled={!pasteText.trim() || isProcessing}
+                    className="w-full py-3.5 bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 text-white font-bold rounded-2xl text-[10px] uppercase tracking-[0.15em] transition-all cursor-pointer shadow-lg shadow-indigo-500/10 flex items-center justify-center gap-2"
+                  >
+                    <Sparkles size={14} />
+                    {isProcessing ? 'Analyzing data...' : 'Extract Holdings with Gemini'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boolean, onClose: () => void, onSave: (h: any) => void, brandColor: string }) => {
   const { addToast } = useToasts();
   const [name, setName] = useState('');
@@ -1823,7 +1949,7 @@ const ManualSgbModal = ({ isOpen, onClose, onSave, brandColor }: { isOpen: boole
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              model: "gemini-3.5-flash",
+                              model: "gemini-2.5-flash",
                               contents: `Find the absolute latest market price for SGB titled: ${name}. Only return the numeric price.`,
                               config: { tools: [{ googleSearch: {} }] }
                             })
@@ -2122,11 +2248,24 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [isAiImportModalOpen, setIsAiImportModalOpen] = useState(false);
   const [editingHolding, setEditingHolding] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasAutoRefreshed = useRef(false);
+
+  useEffect(() => {
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.getAttribute('contenteditable') === 'true')) {
+        return;
+      }
+      handlePaste(e as any);
+    };
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, []);
 
   useEffect(() => {
     if (holdings.length === 0) return;
@@ -2212,7 +2351,7 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: `Identify the absolute latest market Last Traded Price (LTP) from today's real-time trading for THESE Indian Sovereign Gold Bonds (SGBs): ${sgbNames}. 
            Search Google for the most recent NSE/BSE gold bond prices. 
            Return a JSON array of objects with 'name' and 'ltp'. 
@@ -2905,6 +3044,16 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
            <AddTickerFeature user={user} holdings={holdings} watchlist={watchlist} onSaveHolding={onSaveHolding} onWatchlistChange={onWatchlistChange} onWatchlistDelete={onWatchlistDelete} />
 
            <button 
+             onClick={() => setIsAiImportModalOpen(true)}
+             className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-indigo-500 text-white hover:bg-indigo-400 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 group border-b-2 border-indigo-700/50 cursor-pointer"
+             title="Import portfolio screenshots or copy-pasted text using Gemini AI"
+           >
+              <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Sparkles size={14} className="group-hover:scale-110 transition-transform drop-shadow-md relative z-10 animate-pulse" />
+              <span className="relative z-10 drop-shadow-sm">AI Import</span>
+           </button>
+
+           <button 
              onClick={() => setIsManualModalOpen(true)}
              className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-amber-500 text-white hover:bg-amber-400 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-amber-500/20 hover:shadow-amber-500/40 group border-b-2 border-amber-700/50"
            >
@@ -3143,6 +3292,18 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
         onSave={onSaveHolding}
         onDelete={handleDeleteHolding}
         holding={editingHolding}
+      />
+      <AiImportModal
+        isOpen={isAiImportModalOpen}
+        onClose={() => setIsAiImportModalOpen(false)}
+        onFileChange={handleFileChange}
+        onPasteText={(text: string) => {
+          if (!text) return;
+          const base64Text = btoa(unescape(encodeURIComponent(text)));
+          processImageWithGemini(base64Text, 'text/plain');
+        }}
+        isProcessing={isProcessing}
+        brandColor={brandColor}
       />
     </div>
   );

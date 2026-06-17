@@ -149,6 +149,17 @@
         "credentials": { "type": "object" },
         "updatedAt": { "type": "number" }
       }
+    },
+    "Watchlist": {
+      "title": "Watchlist",
+      "description": "User watchlisted items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "symbol": { "type": "string" },
+        "createdAt": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -203,6 +214,10 @@
     "/artifacts/{appId}/users/{userId}/manual_benchmark/{dateId}": {
       "schema": { "$ref": "#/entities/ManualBenchmark" },
       "description": "Manual benchmark price overrides"
+    },
+    "/artifacts/{appId}/users/{userId}/watchlist/{watchlistId}": {
+      "schema": { "$ref": "#/entities/Watchlist" },
+      "description": "User watchlisted stocks and mutual funds"
     }
   }
 }
