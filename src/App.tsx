@@ -2249,7 +2249,7 @@ const ThemeCustomizerModal = ({ isOpen, onClose, brandColor, setBrandColor }: { 
   );
 };
 
-const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHolding, onWatchlistChange, onWatchlistDelete, isApiMode, showManualTickers, setShowManualTickers, setAngelOneEnabled, isLoading = false }: { user: any, holdings: any[], watchlist?: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, onWatchlistChange?: (id: string, field: string, value: any) => void, onWatchlistDelete?: (id: string) => void, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void, setAngelOneEnabled?: (v: boolean) => void, isLoading?: boolean }) => {
+const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHolding, onWatchlistChange, onWatchlistDelete, isApiMode, showManualTickers, setShowManualTickers, setAngelOneEnabled, isLoading = false, latestPortfolioValue }: { user: any, holdings: any[], watchlist?: any[], brandColor: string, onSaveHolding: (h: any) => Promise<void>, onWatchlistChange?: (id: string, field: string, value: any) => void, onWatchlistDelete?: (id: string) => void, isApiMode?: boolean, showManualTickers: boolean, setShowManualTickers: (val: boolean) => void, setAngelOneEnabled?: (v: boolean) => void, isLoading?: boolean, latestPortfolioValue?: number }) => {
   const { addToast } = useToasts();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
@@ -4066,9 +4066,10 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     // Use the explicit sum as requested by the user
     const liveMV = explicitMV > 0 ? explicitMV : apiMV;
     
-    const histMV = validHistory.length > 0 ? Number(validHistory[validHistory.length - 1].marketValue) : 0;
-    const isLive = angelOneEnabled && liveMV > 0;
-    const curMV = isLive ? liveMV : histMV;
+    const sortedHistory = [...validHistory].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const histMV = sortedHistory.length > 0 ? Number(sortedHistory[sortedHistory.length - 1].marketValue) : 0;
+    const isLive = false;
+    const curMV = histMV;
 
     let net = 0; validTxns.forEach(t => net += (Number(t.deposit) || 0) - (Number(t.withdrawal) || 0));
     let avgY = 0; if (validTxns.length > 0) { const years = Math.max(0.1, (new Date().getTime() - new Date(validTxns[0].date).getTime()) / (1000*60*60*24*365.25)); avgY = net / years; }
@@ -4494,7 +4495,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               </div>
 
               <div id="holdings">
-                <HoldingsTable isLoading={loadingData} user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} watchlist={watchlist} onWatchlistChange={handleWatchlistChange} onWatchlistDelete={handleWatchlistDelete} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} setAngelOneEnabled={setAngelOneEnabled} />
+                <HoldingsTable isLoading={loadingData} user={user} holdings={angelOneEnabled ? holdings : holdings.filter(h => !h.symboltoken)} watchlist={watchlist} onWatchlistChange={handleWatchlistChange} onWatchlistDelete={handleWatchlistDelete} brandColor={brandColor} onSaveHolding={saveHoldingToFirestore} isApiMode={angelOneEnabled} showManualTickers={showManualTickers} setShowManualTickers={setShowManualTickers} setAngelOneEnabled={setAngelOneEnabled} latestPortfolioValue={metrics.currentMV} />
               </div>
 
               <div id="filings">
@@ -4721,7 +4722,6 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-start">
                 <Sheet title="Transactions" coll="transactions" data={transactions} onEdit={handleTxnChange} onDelete={handleTxnDelete} keys={['date','particulars','deposit','withdrawal']} onPaste={(e: any) => handlePaste(e,'transactions',['date','particulars','deposit','withdrawal'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearTransactions} onClearRecent={clearRecentTransactions} />
                 <Sheet title="Portfolio Value" coll="history" data={portfolioHistory} onEdit={handleMvChange} onDelete={handleMvDelete} keys={['date','marketValue']} onPaste={(e: any) => handlePaste(e,'history',['date','marketValue'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearPortfolioHistory} onClearRecent={clearRecentPortfolioHistory} />
-                <Sheet title="Watchlist" coll="watchlist" data={watchlist} onEdit={handleWatchlistChange} onDelete={handleWatchlistDelete} keys={['name', 'symbol']} onPaste={(e: any) => handlePaste(e,'watchlist',['name', 'symbol'])} brandColor={brandColor} correctPin={CORRECT_PIN} onClearAll={clearWatchlist} onClearRecent={clearRecentWatchlist} noLock={true} />
                 <Sheet 
                   title="Benchmark Closing Price" 
                   coll="benchmark" 
