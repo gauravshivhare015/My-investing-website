@@ -26,6 +26,7 @@ import { auth, db } from './firebase';
 
 import { FilingsDashboard } from './components/FilingsDashboard';
 import { AddTickerFeature } from './components/AddTickerFeature';
+import { CommunityTimeline } from './components/CommunityTimeline';
 
 // --- Error Handling & Toast Imports ---
 import { 
@@ -3317,7 +3318,7 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
 
 export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, setIsDarkMode: (v: boolean) => void }) {
   const { addToast } = useToasts();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('community');
   const [promptSearch, setPromptSearch] = useState('');
   const [user, setUser] = useState<any>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
@@ -4260,6 +4261,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   <button onClick={() => setActiveTab('dashboard')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Dash</button>
                   <button onClick={() => setActiveTab('integrations')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'integrations' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Integrate</button>
                   <button onClick={() => setActiveTab('data')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'data' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Data</button>
+                  <button onClick={() => setActiveTab('community')} className={`px-3 md:px-6 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all ${activeTab === 'community' ? 'bg-white text-slate-900 shadow-sm dark:bg-brand dark:text-black' : 'text-slate-500 dark:text-zinc-400'}`}>Community</button>
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2">
                   <motion.button 
@@ -4736,6 +4738,12 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   onClearRecent={clearRecentBenchmark}
                 />
               </div>
+            </div>
+          )}
+
+          {activeTab === 'community' && (
+            <div className="py-6">
+              <CommunityTimeline user={user} brandColor={brandColor} />
             </div>
           )}
         </div>
