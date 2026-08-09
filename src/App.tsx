@@ -14,7 +14,7 @@ import {
   Calendar, Wallet, ArrowUpRight, ArrowDownRight,
   Database, LayoutDashboard, Trash2, LineChart as LineChartIcon, Rocket, Lock, Cloud,
   Copy, Check, MessageSquare, Search, Target, Sun, Moon, Coins, Sparkles,
-  UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut,
+  UploadCloud, FileText, Image as ImageIcon, File, Download, LogOut, Share2,
   ChevronDown, ChevronUp, ArrowUpDown, ShieldCheck, GripVertical, Plus, Palette, ClipboardPaste, Cpu, Settings, RefreshCw, Edit3, Save, Clock, Loader2, Zap, Info, History, Star
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -831,7 +831,7 @@ const MetricCard = ({ title, value, rawValue, icon: Icon, subtext, trend, highli
   );
 };
 
-const PromptCard = ({ id, title, content, rating, isDragging, onDragStart, onDragOver, onDrop, onEditContent, onEditTitle, onEditRating, onDelete }: any) => {
+const PromptCard = ({ id, title, content, rating, isDragging, onDragStart, onDragOver, onDrop, onEditContent, onEditTitle, onEditRating, onDelete, onShare }: any) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);
@@ -928,6 +928,11 @@ const PromptCard = ({ id, title, content, rating, isDragging, onDragStart, onDra
         </div>
         {!isEditing && !isEditingTitle && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {onShare && (
+              <button onClick={() => onShare(id)} className="p-1.5 md:p-2 rounded-lg transition-all shrink-0 bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10" title="Share to Community">
+                <Share2 size={14} />
+              </button>
+            )}
             <button onClick={handleCopy} className={`p-1.5 md:p-2 rounded-lg transition-all shrink-0 ${copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-black/5 dark:bg-white/5 text-zinc-500 hover:text-brand hover:bg-brand/10'}`}>
               {copied ? <Check size={14} /> : <Copy size={14} />}
             </button>
@@ -3895,6 +3900,40 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     deleteCloudDoc('prompts', id);
   };
 
+  const handlePromptShare = async (id: string) => {
+    if (!user) {
+      addToast("Error", "Please sign in to share prompts.", "error");
+      return;
+    }
+    const prompt = prompts.find(p => p.id === id);
+    if (!prompt) return;
+
+    try {
+      const postId = Math.random().toString(36).substr(2, 9);
+      const postRef = doc(db, 'artifacts', appId, 'community_posts', postId);
+      
+      const postText = `**${prompt.title}**\n\n${prompt.content}`;
+      
+      await setDoc(postRef, {
+        text: postText,
+        authorId: user.uid,
+        authorName: user.displayName || user.email?.split('@')[0] || 'Anonymous',
+        authorPhoto: user.photoURL || null,
+        createdAt: Date.now(),
+        likes: [],
+        comments: [],
+        attachment: null,
+        attachmentName: null,
+        attachmentRefId: null,
+        attachmentChunks: 0,
+      });
+      addToast("Shared", "Prompt shared to Community!", "success");
+      setActiveTab('community');
+    } catch (error) {
+      addToast("Error", "Failed to share prompt.", "error");
+    }
+  };
+
   const handlePaste = async (e: any, collName: string, keys: string[]) => {
     const pastedData = (e.clipboardData || (window as any).clipboardData).getData('Text');
     if (!pastedData) return;
@@ -4553,7 +4592,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   </div>
                   <div className="relative group max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand transition-colors" size={16} /><input type="text" placeholder="Search snippets..." value={promptSearch} onChange={(e) => setPromptSearch(e.target.value)} className="w-full bg-white dark:bg-[#0d0d0d] border border-slate-200/60 dark:border-white/5 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand/10 focus:border-brand/30 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" /></div>
                 </div>
-                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} rating={p.rating} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onEditRating={handlePromptRatingEdit} onDelete={handlePromptDelete} /></motion.div>))}<motion.div layout key="add-prompt-btn"><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-slate-200 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-slate-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-slate-300 dark:text-zinc-800 mb-4" /><p className="text-slate-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
+                {filteredPrompts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">{filteredPrompts.map(p => (<motion.div layout key={p.id} className="relative"><PromptCard id={p.id} title={p.title} content={p.content} rating={p.rating} brandColor={brandColor} isDragging={draggedPromptId === p.id} onDragStart={handlePromptDragStart} onDragOver={handlePromptDragOver} onDrop={handlePromptDrop} onEditContent={handlePromptContentEdit} onEditTitle={handlePromptTitleEdit} onEditRating={handlePromptRatingEdit} onDelete={handlePromptDelete} onShare={handlePromptShare} /></motion.div>))}<motion.div layout key="add-prompt-btn"><button onClick={() => setIsPromptModalOpen(true)} className="h-14 w-full bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-dashed border-slate-200 dark:border-white/10 px-5 transition-all hover:border-brand/30 hover:bg-brand/5 flex items-center justify-center gap-3 text-slate-500 hover:text-brand cursor-pointer"><div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-full group-hover:bg-brand/20 transition-colors"><Plus size={16} /></div><span className="text-sm font-bold tracking-tight">Add Prompt</span></button></motion.div></div>) : (<div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-slate-200 dark:border-white/10 flex flex-col items-center justify-center text-center"><MessageSquare size={32} className="text-slate-300 dark:text-zinc-800 mb-4" /><p className="text-slate-400 dark:text-zinc-600 text-sm font-medium">{promptSearch ? "No snippets matching your search." : "Your prompt vault is empty."}</p><button onClick={() => setIsPromptModalOpen(true)} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2"><Plus size={16} /> Add Prompt</button></div>)}
               </div>
 
               <div id="documents" className="space-y-6 pb-10">
