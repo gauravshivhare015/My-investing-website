@@ -52,7 +52,18 @@
         "type": { "type": "string" },
         "size": { "type": "number" },
         "data": { "type": "string" },
-        "uploadedAt": { "type": "number" }
+        "uploadedAt": { "type": "number" },
+        "isChunked": { "type": "boolean" },
+        "totalChunks": { "type": "number" }
+      }
+    },
+    "FileChunk": {
+      "title": "FileChunk",
+      "description": "A chunk of document data",
+      "type": "object",
+      "properties": {
+        "chunkIndex": { "type": "number" },
+        "data": { "type": "string" }
       }
     },
     "Holding": {
@@ -186,6 +197,10 @@
     "/artifacts/{appId}/users/{userId}/files/{fileId}": {
       "schema": { "$ref": "#/entities/File" },
       "description": "User uploaded files"
+    },
+    "/artifacts/{appId}/users/{userId}/files/{fileId}/chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/FileChunk" },
+      "description": "User uploaded file data chunks"
     },
     "/artifacts/{appId}/users/{userId}/holdings/{holdingId}": {
       "schema": { "$ref": "#/entities/Holding" },

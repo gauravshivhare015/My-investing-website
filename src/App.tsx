@@ -27,6 +27,14 @@ import { auth, db } from './firebase';
 import { FilingsDashboard } from './components/FilingsDashboard';
 import { AddTickerFeature } from './components/AddTickerFeature';
 import { CommunityTimeline } from './components/CommunityTimeline';
+import { 
+  saveDocToIndexedDB, 
+  getDocsFromIndexedDB, 
+  deleteDocFromIndexedDB, 
+  processAndOptimizeFile, 
+  chunkString, 
+  VaultDocument 
+} from './utils/documentStorage';
 
 // --- Error Handling & Toast Imports ---
 import { 
@@ -2764,24 +2772,28 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
   const totalOverallGl = totalValue - totalInvestment;
   const totalOverallGlPct = totalInvestment > 0 ? (totalOverallGl / totalInvestment) * 100 : 0;
 
-  const renderRow = (row: any) => (
-    <motion.tr 
-      layout
-      key={row.id} 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.2 } }}
-      whileHover={{
-        scale: 1.01,
-        y: -1,
-        boxShadow: `0 8px 30px -10px ${brandColor}80, 0 0 0 1.5px ${brandColor}`,
-      }}
-      transition={{ 
-        layout: { type: "spring", stiffness: 350, damping: 30 },
-        opacity: { duration: 0.3 }
-      }}
-      className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-colors duration-300 ring-1 rounded-2xl overflow-hidden`}
-    >
+  const renderRow = (row: any) => {
+    const rowKey = row.id || `holding-${row.symboltoken || ''}-${row.name}-${row.exchange || ''}`;
+    return (
+      <motion.tr 
+        layout
+        key={rowKey} 
+        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96, y: -8, transition: { duration: 0.2, ease: "easeInOut" } }}
+        whileHover={{
+          scale: 1.008,
+          y: -1,
+          boxShadow: `0 8px 30px -10px ${brandColor}80, 0 0 0 1.5px ${brandColor}`,
+        }}
+        transition={{ 
+          layout: { type: "spring", stiffness: 350, damping: 30 },
+          opacity: { duration: 0.25 },
+          y: { duration: 0.25 },
+          scale: { duration: 0.25 }
+        }}
+        className={`group ${row.type === 'SGB' ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] ring-amber-500/20' : 'bg-white/60 dark:bg-white/[0.03] hover:bg-white/80 dark:hover:bg-white/[0.06] ring-black/5 dark:ring-white/5'} backdrop-blur-sm transition-colors duration-300 ring-1 rounded-2xl overflow-hidden`}
+      >
       <td className="px-6 py-5 first:rounded-l-2xl group/td-name relative">
         {row.type === 'SGB' && (
           <div className="absolute inset-0 bg-gradient-to-r from-amber-500/[0.02] to-transparent pointer-events-none rounded-l-2xl" />
@@ -2884,7 +2896,8 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
         </div>
       </td>
     </motion.tr>
-  );
+    );
+  };
 
   const SortIndicator = ({ column }: { column: string }) => {
     const isActive = sortConfig.key === column;
@@ -3238,9 +3251,17 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
             </tr>
           </thead>
           <tbody>
-            <AnimatePresence initial={false} mode="popLayout">
+            <AnimatePresence initial={false}>
               {apiData.length > 0 && (
-                <motion.tr key="api-header" layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-slate-50 dark:bg-zinc-800/50">
+                <motion.tr 
+                  key="api-header" 
+                  layout 
+                  initial={{ opacity: 0, y: -6 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, transition: { duration: 0.15 } }} 
+                  transition={{ layout: { type: "spring", stiffness: 350, damping: 30 }, duration: 0.2 }}
+                  className="bg-slate-50 dark:bg-zinc-800/50"
+                >
                   <td colSpan={8} className="px-6 py-2 text-[9px] font-black uppercase tracking-widest text-brand border-b border-black/5 dark:border-white/5">
                      Synched Tickers
                   </td>
@@ -3249,7 +3270,15 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
               {apiData.map(renderRow)}
               
               {manualData.length > 0 && apiData.length > 0 && (
-                <motion.tr key="manual-header" layout initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="bg-slate-50 dark:bg-zinc-800/50">
+                <motion.tr 
+                  key="manual-header" 
+                  layout 
+                  initial={{ opacity: 0, y: -6 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, transition: { duration: 0.15 } }} 
+                  transition={{ layout: { type: "spring", stiffness: 350, damping: 30 }, duration: 0.2 }}
+                  className="bg-slate-50 dark:bg-zinc-800/50"
+                >
                   <td colSpan={8} className="px-6 py-2 border-b border-black/5 dark:border-white/5">
                     <div className="flex justify-between items-center">
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
@@ -3514,7 +3543,32 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
     return () => unsub();
   }, [user]);
   const [files, setFiles] = useState<any[]>([]);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Load saved documents from persistent IndexedDB immediately on mount so they NEVER vanish on refresh
+  useEffect(() => {
+    let mounted = true;
+    getDocsFromIndexedDB().then(localDocs => {
+      if (mounted && localDocs && localDocs.length > 0) {
+        setFiles(prev => {
+          const map = new Map<string, any>();
+          localDocs.forEach(d => map.set(d.id, d));
+          prev.forEach(d => {
+            if (map.has(d.id)) {
+              map.set(d.id, { ...map.get(d.id), ...d, data: d.data || map.get(d.id).data });
+            } else {
+              map.set(d.id, d);
+            }
+          });
+          return Array.from(map.values()).sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0));
+        });
+      }
+    }).catch(err => {
+      console.warn("Could not load initial documents from IndexedDB:", err);
+    });
+    return () => { mounted = false; };
+  }, []);
 
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
@@ -3644,9 +3698,57 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       setPrompts([...data, { id: generateId(), title: '', content: '' }]);
     }, (error) => handleFirestoreError(error, OperationType.LIST, promptsPath.path));
 
-    const unsubFiles = onSnapshot(filesPath, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      setFiles(data.sort((a, b) => b.uploadedAt - a.uploadedAt));
+    const unsubFiles = onSnapshot(filesPath, async (snapshot) => {
+      const cloudData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+
+      try {
+        const localDocs = await getDocsFromIndexedDB(user.uid);
+        const localMap = new Map(localDocs.map(d => [d.id, d]));
+        const mergedList: any[] = [];
+
+        for (const cloudDoc of cloudData) {
+          const localMatch = localMap.get(cloudDoc.id);
+          if (localMatch && localMatch.data) {
+            mergedList.push({
+              ...cloudDoc,
+              data: localMatch.data
+            });
+          } else if (cloudDoc.data) {
+            await saveDocToIndexedDB({ ...cloudDoc, userId: user.uid });
+            mergedList.push(cloudDoc);
+          } else if (cloudDoc.isChunked) {
+            try {
+              const chunksRef = collection(db, 'artifacts', appId, 'users', user.uid, 'files', cloudDoc.id, 'chunks');
+              const chunkSnap = await getDocs(chunksRef);
+              const chunks = chunkSnap.docs.map(c => c.data() as { chunkIndex: number; data: string });
+              chunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+              const assembledData = chunks.map(c => c.data).join('');
+              const fullDoc = { ...cloudDoc, data: assembledData, userId: user.uid };
+              if (assembledData) {
+                await saveDocToIndexedDB(fullDoc);
+              }
+              mergedList.push(fullDoc);
+            } catch (chunkErr) {
+              console.warn("Failed fetching chunks for doc:", cloudDoc.id, chunkErr);
+              mergedList.push(cloudDoc);
+            }
+          } else {
+            mergedList.push(cloudDoc);
+          }
+        }
+
+        // Retain any local documents that are stored in local storage
+        for (const localDoc of localDocs) {
+          if (!cloudData.some(cd => cd.id === localDoc.id)) {
+            mergedList.push(localDoc);
+          }
+        }
+
+        setFiles(mergedList.sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0)));
+      } catch (err) {
+        console.warn("Error processing files onSnapshot:", err);
+        setFiles(cloudData.sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0)));
+      }
     }, (error) => handleFirestoreError(error, OperationType.LIST, filesPath.path));
 
     const unsubApiTrades = onSnapshot(apiTradesPath, (snapshot) => {
@@ -3999,35 +4101,135 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
 
   const [isDragging, setIsDragging] = useState(false);
 
-  const processFiles = async (uploadedFiles: File[]) => {
-    for (const file of uploadedFiles) {
-      if (!file.type.includes('pdf') && !file.type.includes('jpeg') && !file.type.includes('jpg')) {
-        addToast("Format Error", `File ${file.name} is not supported. Use PDF or JPEG.`, "warning");
-        continue;
+  const handleDeleteFile = async (fileId: string) => {
+    setFiles(prev => prev.filter(f => f.id !== fileId));
+    await deleteDocFromIndexedDB(fileId);
+    if (user) {
+      try {
+        const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'files', fileId);
+        try {
+          const chunksRef = collection(db, 'artifacts', appId, 'users', user.uid, 'files', fileId, 'chunks');
+          const snap = await getDocs(chunksRef);
+          snap.forEach(d => deleteDoc(d.ref).catch(() => {}));
+        } catch (e) {
+          // ignore
+        }
+        await deleteDoc(docRef);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `artifacts/${appId}/users/${user.uid}/files/${fileId}`);
       }
-      if (file.size > 5 * 1024 * 1024) {
-        addToast("File Too Large", `File ${file.name} exceeds 5MB limit.`, "warning");
-        continue;
-      }
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result;
-        const id = generateId();
-        await updateCloudDoc('files', id, {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          data: base64,
-          uploadedAt: Date.now()
-        });
-      };
-      reader.readAsDataURL(file);
     }
+    addToast("Document Removed", "Document removed from storage.", "info");
+  };
+
+  const processFiles = async (uploadedFiles: File[]) => {
+    if (!uploadedFiles || uploadedFiles.length === 0) return;
+    setIsUploadingDoc(true);
+
+    for (const file of uploadedFiles) {
+      const fileNameLower = file.name.toLowerCase();
+      const mimeTypeLower = (file.type || '').toLowerCase();
+
+      const isPdf = mimeTypeLower.includes('pdf') || fileNameLower.endsWith('.pdf');
+      const isImg = mimeTypeLower.includes('jpeg') || 
+                    mimeTypeLower.includes('jpg') || 
+                    mimeTypeLower.includes('png') ||
+                    mimeTypeLower.includes('image') ||
+                    fileNameLower.endsWith('.jpg') || 
+                    fileNameLower.endsWith('.jpeg') || 
+                    fileNameLower.endsWith('.png');
+
+      if (!isPdf && !isImg) {
+        addToast("Format Error", `File "${file.name}" is not supported. Please upload a PDF or JPG/PNG file.`, "warning");
+        continue;
+      }
+      if (file.size > 15 * 1024 * 1024) {
+        addToast("File Too Large", `File "${file.name}" exceeds 15MB limit.`, "warning");
+        continue;
+      }
+
+      try {
+        const { dataUrl, size: finalSize, type: finalType } = await processAndOptimizeFile(file);
+        if (!dataUrl) {
+          addToast("Upload Error", `Could not read content for "${file.name}".`, "error");
+          continue;
+        }
+
+        const id = generateId();
+        const docItem: VaultDocument = {
+          id,
+          name: file.name,
+          type: finalType,
+          size: finalSize,
+          data: dataUrl,
+          uploadedAt: Date.now(),
+          userId: user?.uid || 'local'
+        };
+
+        // 1. Immediately persist to IndexedDB - ensures file NEVER vanishes across refreshes!
+        await saveDocToIndexedDB(docItem);
+
+        // 2. Optimistically update state so it renders in the UI immediately
+        setFiles(prev => [docItem, ...prev.filter(d => d.id !== id)]);
+
+        addToast("Document Uploaded", `"${file.name}" saved successfully.`, "success");
+
+        // 3. Sync to Cloud Firestore if user is authenticated
+        if (user) {
+          try {
+            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'files', id);
+            if (dataUrl.length < 800000) {
+              await setDoc(docRef, {
+                id,
+                name: file.name,
+                type: finalType,
+                size: finalSize,
+                data: dataUrl,
+                uploadedAt: docItem.uploadedAt,
+                createdAt: docItem.uploadedAt,
+                isChunked: false
+              }, { merge: true });
+            } else {
+              // Chunk base64 string across sub-documents to avoid Firestore document 1MB limit
+              const chunks = chunkString(dataUrl, 380000);
+              await setDoc(docRef, {
+                id,
+                name: file.name,
+                type: finalType,
+                size: finalSize,
+                uploadedAt: docItem.uploadedAt,
+                createdAt: docItem.uploadedAt,
+                isChunked: true,
+                totalChunks: chunks.length
+              }, { merge: true });
+
+              for (let i = 0; i < chunks.length; i++) {
+                const chunkDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'files', id, 'chunks', `chunk_${i}`);
+                await setDoc(chunkDocRef, {
+                  chunkIndex: i,
+                  data: chunks[i]
+                });
+              }
+            }
+          } catch (cloudErr) {
+            console.warn("Cloud Firestore upload warning (offline-cached in IndexedDB):", cloudErr);
+            handleFirestoreError(cloudErr, OperationType.WRITE, `artifacts/${appId}/users/${user.uid}/files/${id}`);
+          }
+        }
+      } catch (err: any) {
+        console.error("Error processing file upload:", err);
+        addToast("Upload Failed", `Failed to upload "${file.name}": ${err?.message || 'Unknown error'}`, "error");
+      }
+    }
+
+    setIsUploadingDoc(false);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      processFiles(Array.from(e.target.files));
+      const selected = Array.from(e.target.files);
+      e.target.value = ''; // Reset input so uploading the same file again works reliably
+      processFiles(selected);
     }
   };
 
@@ -4610,6 +4812,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                 <input
                   type="file"
                   multiple
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                   className="hidden"
                   ref={documentFileInputRef}
                   onChange={handleFileUpload}
@@ -4618,9 +4821,19 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                     {files.map(f => (
                       <div key={f.id} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl border border-black/5 dark:border-white/5 shadow-lg group relative flex items-center justify-between transition-all hover:border-brand/30">
-                        <a href={f.data} download={f.name} className="flex-1 p-5 rounded-l-2xl flex items-center gap-4 cursor-pointer overflow-hidden">
+                        <a 
+                          href={f.data || '#'} 
+                          download={f.name} 
+                          onClick={(e) => {
+                            if (!f.data) {
+                              e.preventDefault();
+                              addToast("Loading Document", "Fetching document data, please wait...", "info");
+                            }
+                          }}
+                          className="flex-1 p-5 rounded-l-2xl flex items-center gap-4 cursor-pointer overflow-hidden"
+                        >
                           <div className="p-3 bg-black/5 dark:bg-white/5 rounded-xl group-hover:bg-brand/10 transition-colors shrink-0">
-                            {f.type.includes('pdf') ? <FileText size={24} className="text-rose-500"/> : <ImageIcon size={24} className="text-brand"/>}
+                            {f.type && f.type.includes('pdf') ? <FileText size={24} className="text-rose-500"/> : <ImageIcon size={24} className="text-brand"/>}
                           </div>
                           <div className="overflow-hidden">
                             <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{f.name}</h4>
@@ -4631,18 +4844,32 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            deleteCloudDoc('files', f.id);
+                            handleDeleteFile(f.id);
                           }}
-                          className="opacity-0 group-hover:opacity-100 p-5 text-zinc-400 hover:text-brand transition-all cursor-pointer flex items-center justify-center"
+                          title="Delete Document"
+                          className="opacity-0 group-hover:opacity-100 p-5 text-zinc-400 hover:text-rose-500 transition-all cursor-pointer flex items-center justify-center"
                         >
                           <Trash2 size={20} />
                         </button>
                       </div>
                     ))}
-                    <button onClick={() => documentFileInputRef.current?.click()} className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-dashed border-black/10 dark:border-white/10 transition-all hover:border-brand/30 hover:bg-brand/5 group flex items-center justify-center gap-4 cursor-pointer min-h-[90px]">
+                    <button 
+                      onClick={() => !isUploadingDoc && documentFileInputRef.current?.click()} 
+                      disabled={isUploadingDoc}
+                      className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-5 border border-dashed border-black/10 dark:border-white/10 transition-all hover:border-brand/30 hover:bg-brand/5 group flex items-center justify-center gap-4 cursor-pointer min-h-[90px] disabled:opacity-50"
+                    >
                       <div className="flex items-center gap-3 text-zinc-500 group-hover:text-brand transition-colors">
-                        <Plus size={20} />
-                        <span className="text-sm font-bold tracking-tight">Add Document</span>
+                        {isUploadingDoc ? (
+                          <>
+                            <Loader2 size={20} className="animate-spin text-brand" />
+                            <span className="text-sm font-bold tracking-tight">Saving Document...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus size={20} />
+                            <span className="text-sm font-bold tracking-tight">Add Document</span>
+                          </>
+                        )}
                       </div>
                     </button>
                   </div>
@@ -4650,8 +4877,20 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
                   <div className="bg-surface-light dark:bg-[#0d0d0d] rounded-2xl p-10 md:p-16 border border-dashed border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-center">
                     <File size={32} className="text-zinc-300 dark:text-zinc-800 mb-4" />
                     <p className="text-zinc-400 dark:text-zinc-600 text-sm font-medium">No documents uploaded yet.</p>
-                    <button onClick={() => documentFileInputRef.current?.click()} className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2">
-                      <Plus size={16} /> Add Document
+                    <button 
+                      onClick={() => !isUploadingDoc && documentFileInputRef.current?.click()} 
+                      disabled={isUploadingDoc}
+                      className="mt-6 px-6 py-2 bg-brand text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isUploadingDoc ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" /> Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={16} /> Add Document
+                        </>
+                      )}
                     </button>
                   </div>
                 )}
@@ -5197,10 +5436,19 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
             </tr>
           </thead>
           <tbody>
+            <AnimatePresence>
             {activeItems.map((row: any, i: number) => {
               const isSelected = selectedIds.includes(row.id);
               return (
-                <tr key={row.id} className={`border-b border-black/5 dark:border-white/5 group transition-colors h-[48px] md:h-[56px] ${isSelected ? 'bg-brand/[0.04]' : 'hover:bg-brand/[0.02]'}`}>
+                <motion.tr
+                  key={row.id}
+                  layout
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                  className={`border-b border-black/5 dark:border-white/5 group transition-colors h-[48px] md:h-[56px] ${isSelected ? 'bg-brand/[0.04]' : 'hover:bg-brand/[0.02]'}`}
+                >
                   <td 
                     onClick={(e) => toggleSelect(row.id, e)}
                     className={`p-3 md:p-4 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center cursor-pointer transition-all ${isSelected ? 'bg-brand text-white font-bold' : 'text-zinc-400 dark:text-zinc-600 hover:bg-brand/10 hover:text-brand'}`}
@@ -5323,9 +5571,10 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                       <Save size={16}/>
                     </button>
                   </td>
-                </tr>
+                </motion.tr>
               );
             })}
+            </AnimatePresence>
           </tbody>
 
           {savedItems.length > 0 && (
@@ -5351,11 +5600,20 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
 
           {savedItems.length > 0 && isHistoryOpen && (
             <tbody className="bg-black/[0.02] dark:bg-white/[0.01]">
+              <AnimatePresence>
               {savedItems.map((row: any, i: number) => {
                 const isReadOnly = isLocked;
                 const isSelected = selectedIds.includes(row.id);
                 return (
-                  <tr key={row.id} className={`border-b border-black/5 dark:border-white/5 group transition-colors ${isReadOnly ? 'opacity-80' : isSelected ? 'bg-brand/[0.04]' : 'hover:bg-brand/[0.02]'} h-[48px] md:h-[56px]`}>
+                  <motion.tr
+                    key={row.id}
+                    layout
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
+                    className={`border-b border-black/5 dark:border-white/5 group transition-colors ${isReadOnly ? 'opacity-80' : isSelected ? 'bg-brand/[0.04]' : 'hover:bg-brand/[0.02]'} h-[48px] md:h-[56px]`}
+                  >
                     <td 
                       onClick={(e) => !isReadOnly && toggleSelect(row.id, e)}
                       className={`p-3 md:p-4 font-mono text-[9px] md:text-[10px] w-10 md:w-12 text-center transition-all ${!isReadOnly && isSelected ? 'bg-brand text-white font-bold cursor-pointer' : !isReadOnly ? 'text-zinc-400 dark:text-zinc-600 hover:bg-brand/10 hover:text-brand cursor-pointer' : 'text-zinc-400 dark:text-zinc-600'}`}
@@ -5479,9 +5737,10 @@ function Sheet({ title, data, onEdit, onDelete, keys, onPaste, brandColor, corre
                         </div>
                       )}
                     </td>
-                  </tr>
+                  </motion.tr>
                 );
               })}
+              </AnimatePresence>
             </tbody>
           )}
         </table>
