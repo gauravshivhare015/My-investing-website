@@ -33,7 +33,7 @@ const Footer = () => {
 
   return (
     <footer className="relative mt-20 border-t border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/20 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 mb-12">
           
           {/* Brand & Socials Section */}

@@ -2270,7 +2270,7 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isAiImportModalOpen, setIsAiImportModalOpen] = useState(false);
   const [editingHolding, setEditingHolding] = useState<any>(null);
-  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'dummy'>('table');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'overallGlPct', direction: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasAutoRefreshed = useRef(false);
@@ -2772,8 +2772,57 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
   const totalOverallGl = totalValue - totalInvestment;
   const totalOverallGlPct = totalInvestment > 0 ? (totalOverallGl / totalInvestment) * 100 : 0;
 
-  const renderRow = (row: any) => {
-    const rowKey = row.id || `holding-${row.symboltoken || ''}-${row.name}-${row.exchange || ''}`;
+  // Dummy Portfolio: actual shares increased by 900% (original + 900% = 10x original shares)
+  // All dependent values (Invested, Current Market Value, Overall P&L, Day P&L) adjust proportionally
+  const dummyData = holdings.map(h => {
+    const origQty = Number(h.qty) || 0;
+    const dummyQty = origQty * 10;
+    const avgPrice = Number(h.avg) || 0;
+    const ltpPrice = Number(h.ltp) || 0;
+    const prevClose = Number(h.pClose) || ltpPrice;
+
+    const inv = dummyQty * avgPrice;
+    const cur = dummyQty * ltpPrice;
+    const overallGlAbs = cur - inv;
+    const overallGlPct = inv > 0 ? (overallGlAbs / inv) * 100 : 0;
+    const dayGlAbs = dummyQty * (ltpPrice - prevClose);
+    const dayGlPct = prevClose > 0 ? ((ltpPrice - prevClose) / prevClose) * 100 : 0;
+
+    return { 
+      ...h, 
+      origQty, 
+      qty: dummyQty, 
+      avg: avgPrice,
+      ltp: ltpPrice,
+      pClose: prevClose,
+      inv, 
+      cur, 
+      overallGlAbs, 
+      overallGlPct, 
+      dayGlAbs, 
+      dayGlPct, 
+      isDummy: true 
+    };
+  }).sort((a, b) => {
+    const aValue = a[sortConfig.key];
+    const bValue = b[sortConfig.key];
+    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const dummyApiData = isApiMode ? dummyData.filter(h => h.symboltoken) : [];
+  const dummyManualData = isApiMode ? dummyData.filter(h => !h.symboltoken) : dummyData;
+  const dummyDisplayedData = [...dummyApiData, ...((!isApiMode || showManualTickers) ? dummyManualData : [])];
+
+  const dummyTotalInvestment = dummyDisplayedData.reduce((sum, h) => sum + (h.inv || 0), 0);
+  const dummyTotalValue = dummyDisplayedData.reduce((sum, h) => sum + (h.cur || 0), 0);
+  const dummyTotalOverallGl = dummyTotalValue - dummyTotalInvestment;
+  const dummyTotalOverallGlPct = dummyTotalInvestment > 0 ? (dummyTotalOverallGl / dummyTotalInvestment) * 100 : 0;
+  const dummyTotalDayGl = dummyDisplayedData.reduce((sum, h) => sum + (h.dayGlAbs || 0), 0);
+
+  const renderRow = (row: any, isDummy: boolean = false) => {
+    const rowKey = (isDummy ? 'dummy-' : '') + (row.id || `holding-${row.symboltoken || ''}-${row.name}-${row.exchange || ''}`);
     return (
       <motion.tr 
         layout
@@ -2799,58 +2848,66 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
           <div className="absolute inset-0 bg-gradient-to-r from-amber-500/[0.02] to-transparent pointer-events-none rounded-l-2xl" />
         )}
         <div className="flex items-center gap-3 font-bold text-slate-900 dark:text-white font-sans group/ticker relative">
-          <div className={`w-9 h-9 rounded-xl ${row.type === 'SGB' ? 'bg-gradient-to-br from-amber-400/20 to-yellow-600/10 text-amber-600 dark:text-amber-400 border-amber-500/30' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-[10px] font-black shadow-sm border transition-all duration-500 group-hover/ticker:scale-110 group-hover/ticker:shadow-lg`}>
-            {row.type === 'SGB' ? <Coins size={16} className="drop-shadow-sm" /> : row.name.substring(0, 2).toUpperCase()}
+          <div className={`w-10 h-10 rounded-xl ${row.type === 'SGB' ? 'bg-gradient-to-br from-amber-400/20 to-yellow-600/10 text-amber-600 dark:text-amber-400 border-amber-500/30' : 'bg-brand/10 text-brand border-brand/10'} flex items-center justify-center text-xs font-black shadow-sm border transition-all duration-500 group-hover/ticker:scale-110 group-hover/ticker:shadow-lg shrink-0`}>
+            {row.type === 'SGB' ? <Coins size={18} className="drop-shadow-sm" /> : row.name.substring(0, 2).toUpperCase()}
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <span className={`text-xs tracking-tight uppercase ${row.type === 'SGB' ? 'text-amber-700 dark:text-amber-300' : ''}`}>{row.name}</span>
+              <span className={`text-sm md:text-base font-bold tracking-tight uppercase ${row.type === 'SGB' ? 'text-amber-700 dark:text-amber-300' : ''}`}>{row.name}</span>
               {row.type === 'SGB' && (
-                <span className="text-[7px] font-black tracking-[0.15em] uppercase bg-gradient-to-r from-amber-500/10 to-transparent text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+                <span className="text-[9px] font-black tracking-[0.15em] uppercase bg-gradient-to-r from-amber-500/10 to-transparent text-amber-600 dark:text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
                   Sovereign Gold
                 </span>
               )}
               {row.type === 'SGB' && row.isAiVerified && (
-                <span className="text-[7px] font-black tracking-widest uppercase bg-brand/10 text-brand px-1.5 py-0.5 rounded-full ring-1 ring-brand/20 flex items-center gap-1 shadow-sm">
-                  <Sparkles size={8} /> AI Active
+                <span className="text-[9px] font-black tracking-widest uppercase bg-brand/10 text-brand px-2 py-0.5 rounded-full ring-1 ring-brand/20 flex items-center gap-1 shadow-sm">
+                  <Sparkles size={9} /> AI Active
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-3 opacity-0 group-hover/ticker:opacity-100 transition-all mt-0.5">
-              <div 
-                className="flex items-center gap-1 cursor-pointer hover:text-brand active:scale-95 transition-all text-zinc-500"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingHolding(row);
-                }}
-              >
-                <Edit3 size={10} className="text-current" />
-                <span className="text-[8px] font-black tracking-widest uppercase border-b border-current/20">Manage</span>
+            {!isDummy ? (
+              <div className="flex items-center gap-3 opacity-0 group-hover/ticker:opacity-100 transition-all mt-0.5">
+                <div 
+                  className="flex items-center gap-1 cursor-pointer hover:text-brand active:scale-95 transition-all text-zinc-500"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingHolding(row);
+                  }}
+                >
+                  <Edit3 size={11} className="text-current" />
+                  <span className="text-[10px] font-black tracking-widest uppercase border-b border-current/20">Manage</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-3 opacity-0 group-hover/ticker:opacity-100 transition-all mt-0.5">
+                <span className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase">Portfolio 2</span>
+              </div>
+            )}
           </div>
         </div>
       </td>
-      <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">{row.qty}</td>
-      <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.avg)}</td>
-      <td className="px-6 py-5 text-right font-mono text-[12px] text-slate-900 dark:text-white font-bold group/price">
+      <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-500 dark:text-zinc-400 font-medium">
+        <span className="font-bold text-slate-900 dark:text-white text-sm md:text-base">{row.qty}</span>
+      </td>
+      <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-700 dark:text-zinc-300 font-semibold">₹{formatAmt(row.avg)}</td>
+      <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-900 dark:text-white font-bold group/price">
           <div 
             className="flex items-center justify-end gap-3 p-2 -m-2 rounded-xl transition-all duration-500"
           >
              <div className="flex flex-col items-end">
                 <div className="flex items-center gap-2">
                    <span 
-                     className="transition-all duration-300 group-hover/price:scale-110 origin-right"
+                     className="transition-all duration-300 group-hover/price:scale-110 origin-right text-sm md:text-base font-bold"
                    >₹{formatAmt(row.ltp)}</span>
                    {row.isAiVerified && (
                      <motion.div
                        animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.2, 1] }}
                        transition={{ repeat: Infinity, duration: 2 }}
                      >
-                       <Sparkles size={11} className="text-brand filter drop-shadow-[0_0_8px_rgba(255,200,0,0.5)]" />
+                       <Sparkles size={12} className="text-brand filter drop-shadow-[0_0_8px_rgba(255,200,0,0.5)]" />
                      </motion.div>
                    )}
-                   {row.type === 'SGB' && (
+                   {row.type === 'SGB' && !isDummy && (
                      <button
                        onClick={(e) => {
                          e.stopPropagation();
@@ -2860,38 +2917,27 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
                        className="p-1.5 hover:bg-amber-500/20 rounded-lg transition-all text-amber-500/50 hover:text-amber-500 active:scale-75 shadow-sm hover:shadow-amber-500/20"
                        title="Force Sync with Gemini AI"
                      >
-                       <RefreshCw size={11} className={`${isRefreshingPrices ? 'animate-spin' : 'group-hover/price:rotate-180 transition-transform duration-700'}`} />
+                       <RefreshCw size={12} className={`${isRefreshingPrices ? 'animate-spin' : 'group-hover/price:rotate-180 transition-transform duration-700'}`} />
                      </button>
                    )}
                 </div>
                 {row.isAiVerified && (
-                  <span className="text-[6px] font-black text-brand uppercase tracking-[0.25em] mt-0.5 opacity-80 bg-brand/5 px-1 rounded">AI Verified Live</span>
+                  <span className="text-[8px] font-black text-brand uppercase tracking-[0.25em] mt-0.5 opacity-80 bg-brand/5 px-1.5 py-0.5 rounded">AI Verified Live</span>
                 )}
              </div>
         </div>
       </td>
-      <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-500 dark:text-zinc-400 font-medium">₹{formatAmt(row.inv)}</td>
-      <td className="px-6 py-5 text-right font-mono text-[11px] text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">₹{formatAmt(row.cur)}</td>
-      <td className="px-6 py-5 text-right last:rounded-r-2xl">
+      <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-700 dark:text-zinc-300 font-semibold">₹{formatAmt(row.inv)}</td>
+      <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">₹{formatAmt(row.cur)}</td>
+      <td className="px-6 py-5 text-right last:rounded-r-2xl rounded-r-2xl">
         <div className="flex flex-col items-end gap-1.5">
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-black text-[11px] ring-1 transition-all duration-300 ${row.overallGlAbs >= 0 ? 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20 shadow-lg shadow-emerald-500/5' : 'bg-rose-500/10 text-rose-500 ring-rose-500/20 shadow-lg shadow-rose-500/5'}`}>
-            <span className="text-[10px]">{row.overallGlAbs >= 0 ? '▲' : '▼'}</span> 
+          <div className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-xs md:text-sm ring-1 transition-all duration-300 ${row.overallGlAbs >= 0 ? 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20 shadow-lg shadow-emerald-500/5' : 'bg-rose-500/10 text-rose-500 ring-rose-500/20 shadow-lg shadow-rose-500/5'}`}>
+            <span className="text-xs">{row.overallGlAbs >= 0 ? '▲' : '▼'}</span> 
             <span>₹{formatAmt(Math.abs(row.overallGlAbs))}</span>
           </div>
-          <div className={`inline-flex items-center gap-1.5 text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full ${row.overallGlPct > 0 ? 'text-emerald-500/80 bg-emerald-500/5' : 'text-rose-500/80 bg-rose-500/5'}`}>
-            <TrendingUp size={8} />
+          <div className={`inline-flex items-center gap-1.5 text-[10px] md:text-xs font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-full ${row.overallGlPct > 0 ? 'text-emerald-500/80 bg-emerald-500/5' : 'text-rose-500/80 bg-rose-500/5'}`}>
+            <TrendingUp size={10} />
             {row.overallGlPct > 0 ? '+' : ''}{row.overallGlPct.toFixed(2)}%
-          </div>
-        </div>
-      </td>
-      <td className="px-6 py-5 text-right">
-        <div className="flex flex-col items-end gap-1">
-          <div className={`flex items-center gap-1 font-bold text-[11px] ${row.dayGlAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-             <div className={`w-1 h-1 rounded-full ${row.dayGlAbs >= 0 ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-             {row.dayGlAbs >= 0 ? '+' : ''}₹{formatAmt(row.dayGlAbs)}
-          </div>
-          <div className={`text-[10px] font-black font-mono transition-all duration-300 ${row.dayGlAbs >= 0 ? 'text-emerald-500/60' : 'text-rose-500/60'}`}>
-            {row.dayGlPct > 0 ? '+' : ''}{row.dayGlPct.toFixed(2)}%
           </div>
         </div>
       </td>
@@ -2909,12 +2955,12 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
             <motion.div
               key="idle"
               initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 0.15, scale: 1 }}
+              animate={{ opacity: 0.2, scale: 1 }}
               exit={{ opacity: 0, scale: 0.5 }}
               transition={{ duration: 0.2 }}
               className="text-slate-400"
             >
-              <ArrowUpDown size={10} />
+              <ArrowUpDown size={12} />
             </motion.div>
           ) : (
             <motion.div
@@ -2938,9 +2984,9 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
               className="text-brand"
             >
               {sortConfig.direction === 'asc' ? (
-                <ChevronUp size={12} className="stroke-[3px]" />
+                <ChevronUp size={14} className="stroke-[3px]" />
               ) : (
-                <ChevronDown size={12} className="stroke-[3px]" />
+                <ChevronDown size={14} className="stroke-[3px]" />
               )}
             </motion.div>
           )}
@@ -3004,9 +3050,9 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6 relative z-[60] border-b border-zinc-100 dark:border-zinc-800/60 pb-8">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <div className="w-1.5 h-6 bg-brand rounded-full shadow-[0_0_12px_rgba(99,102,241,0.3)]" />
+            <div className="w-2 h-7 bg-brand rounded-full shadow-[0_0_12px_rgba(99,102,241,0.3)]" />
             <div>
-              <h3 className="text-slate-800 dark:text-white font-black uppercase tracking-[0.2em] text-[11px] md:text-sm">
+              <h3 className="text-slate-800 dark:text-white font-black uppercase tracking-[0.2em] text-sm md:text-base">
                 Equity Dashboard
               </h3>
             </div>
@@ -3014,7 +3060,7 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
                <motion.div 
                  animate={{ rotate: 360 }}
                  transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                 className="w-3.5 h-3.5 rounded-full border-2 border-brand border-t-transparent ml-2"
+                 className="w-4 h-4 rounded-full border-2 border-brand border-t-transparent ml-2"
                />
             )}
           </div>
@@ -3024,10 +3070,10 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
            {setAngelOneEnabled && (
              <button 
                onClick={() => setAngelOneEnabled(!isApiMode)}
-               className={`flex items-center gap-1.5 px-4 py-2.5 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl border transition-all shrink-0 cursor-pointer ${isApiMode ? 'bg-brand/10 border-brand/20 text-brand hover:bg-brand/20' : 'bg-slate-500/10 border-slate-500/20 text-slate-500 hover:bg-slate-500/20'}`}
+               className={`flex items-center gap-2 px-4 py-2.5 text-xs font-black tracking-[0.15em] uppercase rounded-2xl border transition-all shrink-0 cursor-pointer ${isApiMode ? 'bg-brand/10 border-brand/20 text-brand hover:bg-brand/20' : 'bg-slate-500/10 border-slate-500/20 text-slate-500 hover:bg-slate-500/20'}`}
                title={isApiMode ? "Angel One API sync is ON" : "Angel One API sync is OFF"}
              >
-               <span className={`w-1.5 h-1.5 rounded-full ${isApiMode ? 'bg-brand shadow-[0_0_8px_var(--brand-color-rgb)] animate-pulse' : 'bg-slate-400'}`} />
+               <span className={`w-2 h-2 rounded-full ${isApiMode ? 'bg-brand shadow-[0_0_8px_var(--brand-color-rgb)] animate-pulse' : 'bg-slate-400'}`} />
                {isApiMode ? 'A1 Connected' : 'A1 Offline'}
              </button>
            )}
@@ -3035,15 +3081,15 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
            <button 
              onClick={refreshPrices}
              disabled={isRefreshingPrices || holdings.length === 0}
-             className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-emerald-500 text-white hover:bg-emerald-400 active:scale-95 transition-all flex items-center gap-3 border-b-2 border-emerald-700/50 disabled:opacity-50 disabled:grayscale group shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40"
+             className="relative overflow-hidden px-5 md:px-6 py-2.5 text-xs font-black tracking-[0.15em] uppercase rounded-2xl bg-emerald-500 text-white hover:bg-emerald-400 active:scale-95 transition-all flex items-center gap-2.5 border-b-2 border-emerald-700/50 disabled:opacity-50 disabled:grayscale group shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40"
            >
               <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               {isRefreshingPrices ? (
-                <div className="w-3.5 h-3.5 md:w-4 md:h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin relative z-10" />
+                <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin relative z-10" />
               ) : (
                 <div className="relative z-10">
-                  <Activity size={14} className="group-hover:animate-pulse" />
-                  <Sparkles size={8} className="absolute -top-1.5 -right-1.5 text-white/90 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Activity size={15} className="group-hover:animate-pulse" />
+                  <Sparkles size={9} className="absolute -top-1.5 -right-1.5 text-white/90 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
               )}
               <span className="hidden sm:inline relative z-10 drop-shadow-sm">{isRefreshingPrices ? 'Updating...' : 'Live Refresh + AI'}</span>
@@ -3051,18 +3097,20 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
            
            <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800 hidden sm:block" />
 
-           <div className="flex bg-slate-100 dark:bg-zinc-800/80 p-1 rounded-xl">
+           <div className="flex bg-slate-100 dark:bg-zinc-800/80 p-1.5 rounded-xl">
              <button 
                onClick={() => setViewMode('table')}
-               className={`px-3 py-1.5 text-[10px] md:text-xs font-black tracking-wider uppercase rounded-lg transition-all ${viewMode === 'table' ? 'bg-white dark:bg-zinc-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
+               className={`px-3.5 py-1.5 text-xs md:text-sm font-black tracking-wider uppercase rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'table' ? 'bg-white dark:bg-zinc-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
              >
-               Table View
+               <Wallet size={13} className={viewMode === 'table' ? 'text-brand' : 'opacity-60'} />
+               <span>Portfolio 1</span>
              </button>
              <button 
-               onClick={() => setViewMode('chart')}
-               className={`px-3 py-1.5 text-[10px] md:text-xs font-black tracking-wider uppercase rounded-lg transition-all ${viewMode === 'chart' ? 'bg-white dark:bg-zinc-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
+               onClick={() => setViewMode('dummy')}
+               className={`px-3.5 py-1.5 text-xs md:text-sm font-black tracking-wider uppercase rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'dummy' ? 'bg-white dark:bg-zinc-700 text-brand shadow-sm font-black' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
              >
-               Chart View
+               <TrendingUp size={13} className={viewMode === 'dummy' ? 'text-brand' : 'opacity-60'} />
+               <span>Portfolio 2</span>
              </button>
            </div>
 
@@ -3070,96 +3118,202 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
 
            <button 
              onClick={() => setIsAiImportModalOpen(true)}
-             className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-indigo-500 text-white hover:bg-indigo-400 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 group border-b-2 border-indigo-700/50 cursor-pointer"
+             className="relative overflow-hidden px-5 md:px-6 py-2.5 text-xs font-black tracking-[0.15em] uppercase rounded-2xl bg-indigo-500 text-white hover:bg-indigo-400 active:scale-95 transition-all flex items-center gap-2.5 shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 group border-b-2 border-indigo-700/50 cursor-pointer"
              title="Import portfolio screenshots or copy-pasted text using Gemini AI"
            >
               <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <Sparkles size={14} className="group-hover:scale-110 transition-transform drop-shadow-md relative z-10 animate-pulse" />
+              <Sparkles size={15} className="group-hover:scale-110 transition-transform drop-shadow-md relative z-10 animate-pulse" />
               <span className="relative z-10 drop-shadow-sm">AI Import</span>
            </button>
 
            <button 
              onClick={() => setIsManualModalOpen(true)}
-             className="relative overflow-hidden px-5 md:px-6 py-3 text-[9px] md:text-[10px] font-black tracking-[0.2em] uppercase rounded-2xl bg-amber-500 text-white hover:bg-amber-400 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-amber-500/20 hover:shadow-amber-500/40 group border-b-2 border-amber-700/50"
+             className="relative overflow-hidden px-5 md:px-6 py-2.5 text-xs font-black tracking-[0.15em] uppercase rounded-2xl bg-amber-500 text-white hover:bg-amber-400 active:scale-95 transition-all flex items-center gap-2.5 shadow-xl shadow-amber-500/20 hover:shadow-amber-500/40 group border-b-2 border-amber-700/50"
            >
               <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <Coins size={14} className="group-hover:scale-110 transition-transform drop-shadow-md relative z-10" />
+              <Coins size={15} className="group-hover:scale-110 transition-transform drop-shadow-md relative z-10" />
               <span className="hidden sm:inline relative z-10 drop-shadow-sm">Add SGB</span>
            </button>
         </div>
       </div>
 
       <div className="overflow-x-auto hide-scrollbar relative z-0">
-        {viewMode === 'chart' ? (
-          <div className="py-8 animate-in fade-in zoom-in duration-500">
-            <div className="bg-white/50 dark:bg-zinc-900/50 p-6 md:p-8 rounded-[2rem] border border-white/20 dark:border-white/5 shadow-xl flex flex-col justify-center transform transition-all duration-300 hover:shadow-2xl hover:bg-white/60 dark:hover:bg-zinc-800/60 group w-full max-w-4xl mx-auto">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-8 border-b-2 pb-2 flex items-center justify-center gap-2" style={{ borderBottomColor: `${brandColor}4D` }}>
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: brandColor }} />
-                Portfolio Allocation
-              </h4>
-              <div className="w-full h-[180px] relative drop-shadow-[0_10px_20px_rgba(0,0,0,0.1)]">
-                {isLoading ? (
-                  <div className="w-full h-full rounded-xl bg-slate-100 dark:bg-white/5 animate-pulse" />
-                ) : stackedData.datasets.length > 0 ? (
-                <ChartJSBar 
-                  data={stackedData}
-                  options={{
-                    indexAxis: 'y' as const,
-                    plugins: { 
-                      legend: { 
-                        display: true,
-                        position: 'bottom',
-                        labels: {
-                          usePointStyle: true,
-                          boxWidth: 8,
-                          font: { family: 'Inter', size: 10, weight: 'bold' }
-                        }
-                      },
-                      tooltip: {
-                         backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                         titleFont: { size: 13, family: 'Inter' },
-                         bodyFont: { size: 12, family: 'Inter' },
-                         padding: 12,
-                         cornerRadius: 8,
-                         displayColors: true,
-                         callbacks: {
-                           label: (context: any) => `${context.dataset.label}: ${context.parsed.x.toFixed(1)}%`
-                         }
-                      }
-                    },
-                    scales: {
-                      x: { 
-                        stacked: true, 
-                        display: false, 
-                        max: 100,
-                        grid: { display: false },
-                        ticks: {
-                          callback: (value) => `${value}%`,
-                          font: { family: 'Inter', size: 10, weight: 'bold' },
-                          color: '#64748b'
-                        }
-                      },
-                      y: { 
-                        stacked: true,
-                        grid: { display: false }, 
-                        border: { display: false },
-                        ticks: { font: { family: 'Inter', size: 12, weight: 'bold' }, color: '#64748b' }
-                      }
-                    },
-                    maintainAspectRatio: false,
-                    layout: { padding: 0 }
-                  }}
-                />) : (
-                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No data available</div>
-                )}
+        {viewMode === 'dummy' ? (
+          <div className="py-2 animate-in fade-in zoom-in duration-300 space-y-6">
+            {/* Portfolio 2 Banner & Metrics */}
+            <div className="bg-gradient-to-r from-brand/10 via-purple-500/5 to-emerald-500/10 rounded-2xl p-5 md:p-6 border border-brand/20 backdrop-blur-xl">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5 pb-5 border-b border-brand/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-brand text-white rounded-xl shadow-lg shadow-brand/20 shrink-0">
+                    <Wallet size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm md:text-base font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                        Portfolio 2
+                      </h4>
+                      <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full bg-brand text-white tracking-widest uppercase shadow-sm">
+                        Portfolio 2
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                      Active equity portfolio holdings with real-time market quotes, total investment, valuation, and return metrics.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 dark:text-zinc-400 bg-white/60 dark:bg-zinc-800/60 px-3 py-1.5 rounded-xl border border-black/5 dark:border-white/5 shrink-0 self-start md:self-auto">
+                  <Zap size={14} className="text-brand" />
+                  <span>Real-time Live CMP</span>
+                </div>
               </div>
+
+              {/* 3 Summary Stat Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                <div className="bg-white/70 dark:bg-zinc-900/70 p-4 rounded-xl border border-black/5 dark:border-white/5 shadow-sm">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-400 block mb-1.5">Total Invested</span>
+                  <div className="text-xl md:text-2xl font-black text-slate-900 dark:text-white font-mono">₹{formatAmt(dummyTotalInvestment)}</div>
+                  <span className="text-xs text-zinc-400 font-medium block mt-1">{dummyDisplayedData.length} Holdings</span>
+                </div>
+                <div className="bg-white/70 dark:bg-zinc-900/70 p-4 rounded-xl border border-black/5 dark:border-white/5 shadow-sm">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-400 block mb-1.5">Current Value</span>
+                  <div className="text-xl md:text-2xl font-black text-brand font-mono">₹{formatAmt(dummyTotalValue)}</div>
+                  <span className="text-xs text-emerald-500 font-bold block mt-1">Market Valuation</span>
+                </div>
+                <div className="bg-white/70 dark:bg-zinc-900/70 p-4 rounded-xl border border-black/5 dark:border-white/5 shadow-sm">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-400 block mb-1.5">Total P&L</span>
+                  <div className={`text-xl md:text-2xl font-black font-mono ${dummyTotalOverallGl >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {dummyTotalOverallGl >= 0 ? '+' : ''}₹{formatAmt(dummyTotalOverallGl)}
+                  </div>
+                  <span className={`text-xs font-bold block mt-1 ${dummyTotalOverallGlPct >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {dummyTotalOverallGlPct >= 0 ? '+' : ''}{dummyTotalOverallGlPct.toFixed(2)}% ROI
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Portfolio 2 Table */}
+            <div className="overflow-auto max-h-[80vh] w-full pb-4 scrollbar-thin scrollbar-thumb-white/10">
+              <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px]">
+                <thead className="sticky top-0 z-40 bg-white dark:bg-[#121212] backdrop-blur-3xl shadow-sm rounded-lg" style={{ boxShadow: '0 4px 20px -5px rgba(0,0,0,0.2)' }}>
+                  <tr className="uppercase text-xs font-black tracking-[0.15em] text-slate-500 dark:text-zinc-400 select-none">
+                    <th className={`px-6 py-4 cursor-pointer rounded-l-2xl transition-all duration-500 group/th ${sortConfig.key === 'name' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('name')}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="relative">Ticker</span>
+                        <SortIndicator column="name" />
+                      </div>
+                    </th>
+                    <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'qty' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('qty')}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="relative">Units</span>
+                        <SortIndicator column="qty" />
+                      </div>
+                    </th>
+                    <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'avg' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('avg')}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="relative">Cost Bas.</span>
+                        <SortIndicator column="avg" />
+                      </div>
+                    </th>
+                    <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'ltp' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('ltp')}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="relative">Market</span>
+                        <SortIndicator column="ltp" />
+                      </div>
+                    </th>
+                    <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'inv' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('inv')}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="relative">Invested</span>
+                        <SortIndicator column="inv" />
+                      </div>
+                    </th>
+                    <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'cur' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('cur')}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="relative">Current Value</span>
+                        <SortIndicator column="cur" />
+                      </div>
+                    </th>
+                    <th className={`px-6 py-4 text-right cursor-pointer rounded-r-2xl transition-all duration-500 group/th ${sortConfig.key === 'overallGlPct' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('overallGlPct')}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="relative">ROI</span>
+                        <SortIndicator column="overallGlPct" />
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <AnimatePresence initial={false}>
+                    {dummyApiData.length > 0 && (
+                      <motion.tr 
+                        key="dummy-api-header" 
+                        layout 
+                        initial={{ opacity: 0, y: -6 }} 
+                        animate={{ opacity: 1, y: 0 }} 
+                        exit={{ opacity: 0, transition: { duration: 0.15 } }} 
+                        transition={{ layout: { type: "spring", stiffness: 350, damping: 30 }, duration: 0.2 }}
+                        className="bg-slate-50 dark:bg-zinc-800/50"
+                      >
+                        <td colSpan={7} className="px-6 py-2.5 text-xs font-black uppercase tracking-widest text-brand border-b border-black/5 dark:border-white/5">
+                           Synched Tickers
+                        </td>
+                      </motion.tr>
+                    )}
+                    {dummyApiData.map(h => renderRow(h, true))}
+                    
+                    {dummyManualData.length > 0 && dummyApiData.length > 0 && (
+                      <motion.tr 
+                        key="dummy-manual-header" 
+                        layout 
+                        initial={{ opacity: 0, y: -6 }} 
+                        animate={{ opacity: 1, y: 0 }} 
+                        exit={{ opacity: 0, transition: { duration: 0.15 } }} 
+                        transition={{ layout: { type: "spring", stiffness: 350, damping: 30 }, duration: 0.2 }}
+                        className="bg-slate-50 dark:bg-zinc-800/50"
+                      >
+                        <td colSpan={7} className="px-6 py-2.5 border-b border-black/5 dark:border-white/5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-black uppercase tracking-widest text-slate-500">
+                               Manual Tickers
+                            </span>
+                            <button 
+                               onClick={() => setShowManualTickers(!showManualTickers)}
+                               className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showManualTickers ? 'bg-brand' : 'bg-slate-300 dark:bg-zinc-700'}`}
+                            >
+                               <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${showManualTickers ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                            </button>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    )}
+                    {(!isApiMode || showManualTickers) && dummyManualData.map(h => renderRow(h, true))}
+                  </AnimatePresence>
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-50 dark:bg-zinc-800/50 border-t border-black/10 dark:border-white/10">
+                    <td colSpan={4} className="px-6 py-5 text-right text-xs md:text-sm font-black uppercase tracking-widest text-slate-500">
+                      Portfolio 2 Total
+                    </td>
+                    <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-900 dark:text-white font-bold">
+                      ₹{formatAmt(dummyTotalInvestment)}
+                    </td>
+                    <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">
+                      ₹{formatAmt(dummyTotalValue)}
+                    </td>
+                    <td className={`px-6 py-5 text-right font-mono text-sm md:text-base font-bold ${dummyTotalOverallGl >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {dummyTotalOverallGl >= 0 ? '+' : '-'}₹{formatAmt(Math.abs(dummyTotalOverallGl))}
+                      <div className="text-xs text-slate-500 opacity-80 font-semibold mt-0.5">
+                        {dummyTotalOverallGlPct >= 0 ? '+' : ''}{dummyTotalOverallGlPct.toFixed(2)}% ROI
+                      </div>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </div>
         ) : (
           <div className="overflow-auto max-h-[80vh] w-full pb-4 scrollbar-thin scrollbar-thumb-white/10">
             <table className="w-full text-left border-separate border-spacing-y-2 min-w-[800px] animate-in fade-in zoom-in duration-500">
               <thead className="sticky top-0 z-40 bg-white dark:bg-[#121212] backdrop-blur-3xl shadow-sm rounded-lg" style={{ boxShadow: '0 4px 20px -5px rgba(0,0,0,0.2)' }}>
-              <tr className="uppercase text-[9px] font-black tracking-[0.2em] text-slate-400 select-none">
+              <tr className="uppercase text-xs font-black tracking-[0.15em] text-slate-500 dark:text-zinc-400 select-none">
               <th className={`px-6 py-4 cursor-pointer rounded-l-2xl transition-all duration-500 group/th ${sortConfig.key === 'name' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('name')}>
                 <div className="flex items-center gap-1.5">
                   <span className="relative">
@@ -3226,7 +3380,7 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
                   <SortIndicator column="cur" />
                 </div>
               </th>
-              <th className={`px-6 py-4 text-right cursor-pointer transition-all duration-500 group/th ${sortConfig.key === 'overallGlPct' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('overallGlPct')}>
+              <th className={`px-6 py-4 text-right cursor-pointer rounded-r-2xl transition-all duration-500 group/th ${sortConfig.key === 'overallGlPct' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('overallGlPct')}>
                 <div className="flex items-center justify-end gap-1.5">
                   <span className="relative">
                     ROI
@@ -3235,17 +3389,6 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
                     )}
                   </span>
                   <SortIndicator column="overallGlPct" />
-                </div>
-              </th>
-              <th className={`px-6 py-4 text-right cursor-pointer rounded-r-2xl transition-all duration-500 group/th ${sortConfig.key === 'dayGlPct' ? 'bg-brand/[0.03] dark:bg-brand/[0.06] text-brand' : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'}`} onClick={() => requestSort('dayGlPct')}>
-                <div className="flex items-center justify-end gap-1.5">
-                  <span className="relative">
-                    Day Δ
-                    {sortConfig.key === 'dayGlPct' && (
-                      <motion.div layoutId="headerDot" className="absolute -right-2 top-0 w-1 h-1 bg-brand rounded-full" />
-                    )}
-                  </span>
-                  <SortIndicator column="dayGlPct" />
                 </div>
               </th>
             </tr>
@@ -3262,12 +3405,12 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
                   transition={{ layout: { type: "spring", stiffness: 350, damping: 30 }, duration: 0.2 }}
                   className="bg-slate-50 dark:bg-zinc-800/50"
                 >
-                  <td colSpan={8} className="px-6 py-2 text-[9px] font-black uppercase tracking-widest text-brand border-b border-black/5 dark:border-white/5">
+                  <td colSpan={7} className="px-6 py-2.5 text-xs font-black uppercase tracking-widest text-brand border-b border-black/5 dark:border-white/5">
                      Synched Tickers
                   </td>
                 </motion.tr>
               )}
-              {apiData.map(renderRow)}
+              {apiData.map(h => renderRow(h, false))}
               
               {manualData.length > 0 && apiData.length > 0 && (
                 <motion.tr 
@@ -3279,9 +3422,9 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
                   transition={{ layout: { type: "spring", stiffness: 350, damping: 30 }, duration: 0.2 }}
                   className="bg-slate-50 dark:bg-zinc-800/50"
                 >
-                  <td colSpan={8} className="px-6 py-2 border-b border-black/5 dark:border-white/5">
+                  <td colSpan={7} className="px-6 py-2.5 border-b border-black/5 dark:border-white/5">
                     <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
+                      <span className="text-xs font-black uppercase tracking-widest text-slate-500">
                          Manual Tickers
                       </span>
                       <button 
@@ -3294,27 +3437,26 @@ const HoldingsTable = ({ user, holdings, watchlist = [], brandColor, onSaveHoldi
                   </td>
                 </motion.tr>
               )}
-              {(!isApiMode || showManualTickers) && manualData.map(renderRow)}
+              {(!isApiMode || showManualTickers) && manualData.map(h => renderRow(h, false))}
             </AnimatePresence>
           </tbody>
           <tfoot>
             <tr className="bg-slate-50 dark:bg-zinc-800/50 border-t border-black/10 dark:border-white/10">
-              <td colSpan={4} className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-widest text-slate-500">
+              <td colSpan={4} className="px-6 py-5 text-right text-xs md:text-sm font-black uppercase tracking-widest text-slate-500">
                 Total Portfolio
               </td>
-              <td className="px-6 py-4 text-right font-mono text-[12px] text-slate-900 dark:text-white font-bold">
+              <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-900 dark:text-white font-bold">
                 ₹{formatAmt(totalInvestment)}
               </td>
-              <td className="px-6 py-4 text-right font-mono text-[12px] text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">
+              <td className="px-6 py-5 text-right font-mono text-sm md:text-base text-slate-900 dark:text-white font-black bg-brand/[0.03] dark:bg-brand/[0.05]">
                 ₹{formatAmt(totalValue)}
               </td>
-              <td className={`px-6 py-4 text-right font-mono text-[12px] font-bold ${totalOverallGl >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              <td className={`px-6 py-5 text-right font-mono text-sm md:text-base font-bold ${totalOverallGl >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                 {totalOverallGl >= 0 ? '+' : '-'}₹{formatAmt(Math.abs(totalOverallGl))}
-                <div className="text-[10px] text-slate-500 opacity-80 font-medium">
-                  {totalOverallGlPct >= 0 ? '+' : ''}{totalOverallGlPct.toFixed(2)}%
+                <div className="text-xs text-slate-500 opacity-80 font-semibold mt-0.5">
+                  {totalOverallGlPct >= 0 ? '+' : ''}{totalOverallGlPct.toFixed(2)}% ROI
                 </div>
               </td>
-              <td className="px-6 py-4"></td>
             </tr>
           </tfoot>
         </table>
@@ -4486,7 +4628,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
       <div className="relative z-10 w-full pb-20">
         <nav className="border-b border-black/5 dark:border-white/5 bg-white/80 dark:bg-black/50 backdrop-blur-2xl sticky top-0 z-50 flex flex-col w-full">
           <div className="h-16 md:h-20 flex items-center border-b border-black/5 dark:border-white/5 md:border-none">
-            <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center gap-4">
+            <div className="max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-8 w-full flex justify-between items-center gap-4">
               <div className="flex items-center gap-2 md:gap-3 shrink-0">
                 {activeTab === 'data' ? (
                   <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 md:px-4 py-1 md:py-2 rounded-full text-[10px] md:text-sm font-bold transition-all text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-500/20 bg-emerald-500/5 shadow-sm" title="Export to Excel">
@@ -4551,11 +4693,11 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
             </div>
           </div>
           {activeTab === 'dashboard' && (
-            <div className="max-w-7xl mx-auto px-4 w-full flex items-center justify-start gap-2 md:gap-4 py-2 md:py-3 text-[9px] md:text-xs font-black tracking-[0.15em] text-slate-400 dark:text-zinc-500 uppercase overflow-x-auto no-scrollbar scroll-smooth">
-              <button onClick={() => scrollToSection('dashboards')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'dashboards' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Dashboards</button>
-              <button onClick={() => scrollToSection('performance')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'performance' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Performance</button>
-              <button onClick={() => scrollToSection('savings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'savings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Savings</button>
-              <button onClick={() => scrollToSection('holdings')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'holdings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Equity</button>
+            <div className="max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-8 w-full flex items-center justify-start gap-2 md:gap-4 py-2 md:py-3 text-xs md:text-sm font-black tracking-[0.15em] text-slate-400 dark:text-zinc-500 uppercase overflow-x-auto no-scrollbar scroll-smooth">
+              <button onClick={() => scrollToSection('dashboards')} className={`transition-all whitespace-nowrap shrink-0 px-3.5 py-2 rounded-xl ${activeSection === 'dashboards' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10 font-black' : 'hover:text-brand font-bold'}`}>Dashboards</button>
+              <button onClick={() => scrollToSection('performance')} className={`transition-all whitespace-nowrap shrink-0 px-3.5 py-2 rounded-xl ${activeSection === 'performance' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10 font-black' : 'hover:text-brand font-bold'}`}>Performance</button>
+              <button onClick={() => scrollToSection('savings')} className={`transition-all whitespace-nowrap shrink-0 px-3.5 py-2 rounded-xl ${activeSection === 'savings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10 font-black' : 'hover:text-brand font-bold'}`}>Savings</button>
+              <button onClick={() => scrollToSection('holdings')} className={`transition-all whitespace-nowrap shrink-0 px-3.5 py-2 rounded-xl ${activeSection === 'holdings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10 font-black' : 'hover:text-brand font-bold'}`}>Equity</button>
               <button onClick={() => window.open('https://aistudio.google.com/apps/a1706b14-3507-47c1-9c7e-80e788253ee6?showPreview=true&showAssistant=true&project=gen-lang-client-0213064099&fullscreenApplet=true', '_blank')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'filings' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Filings</button>
               <button onClick={() => scrollToSection('prompts')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'prompts' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Prompts</button>
               <button onClick={() => scrollToSection('documents')} className={`transition-all whitespace-nowrap shrink-0 px-3 py-1.5 rounded-xl ${activeSection === 'documents' ? 'text-slate-900 dark:text-white bg-black/5 dark:bg-white/10' : 'hover:text-brand'}`}>Docs</button>
@@ -4563,7 +4705,7 @@ export function MainApp({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, se
           )}
         </nav>
 
-        <div className="max-w-7xl mx-auto px-4 py-4 md:py-10 relative z-10 min-h-screen">
+        <div className="max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-10 relative z-10 min-h-screen">
           {/* Animated Background Mesh */}
           <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
             <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-brand/5 rounded-full blur-[120px] animate-blob filter" />
